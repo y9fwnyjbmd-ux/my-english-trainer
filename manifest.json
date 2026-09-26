@@ -1,0 +1,12 @@
+{
+  "name": "My English Trainer",
+  "short_name": "English Trainer",
+  "description": "日本人の英語学習者のためのシンプルな英単語帳PWA",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#315d55",
+  "orientation": "portrait"
+}
