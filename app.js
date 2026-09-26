@@ -41,6 +41,7 @@
     { id: "seed-2", date: "2024-06-12", score: 6, total: 8, minutes: 7 },
     { id: "seed-3", date: "2024-06-10", score: 7, total: 10, minutes: 11 }
   ];
+  const QUIZ_TOTAL = 20;
 
   const state = {
     mastery: read(KEYS.mastery, DEFAULT_MASTERY),
@@ -193,26 +194,65 @@
       '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + word.example + '</p><p class="example-translation">' + word.translation + '</p></section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
   }
 
+  function shuffle(items) {
+    return items.slice().sort(function () { return Math.random() - .5; });
+  }
+
   function makeChoices(correct) {
-    return [correct].concat(WORDS.filter(function (word) { return word.id !== correct.id; }).sort(function () { return Math.random() - .5; }).slice(0, 3)).sort(function () { return Math.random() - .5; });
+    return shuffle([correct].concat(shuffle(WORDS.filter(function (word) {
+      return word.id !== correct.id;
+    })).slice(0, 3)));
   }
 
   function newQuiz() {
-    const word = WORDS[Math.floor(Math.random() * WORDS.length)];
-    state.quiz = { question: word.id, choices: makeChoices(word), selected: null, asked: 0, correct: 0 };
+    const quizQuestions = shuffle(WORDS).slice(0, QUIZ_TOTAL).map(function (word) {
+      return { question: word, choices: makeChoices(word) };
+    });
+    state.quiz = {
+      quizQuestions: quizQuestions,
+      currentQuestionIndex: 0,
+      isAnswered: false,
+      selectedAnswer: null,
+      score: 0,
+      historySaved: false,
+      completed: false
+    };
+  }
+
+  function recordQuizHistory(quiz) {
+    if (quiz.historySaved) return;
+    state.history.unshift({
+      id: String(Date.now()),
+      date: new Date().toISOString().slice(0, 10),
+      score: quiz.score,
+      total: QUIZ_TOTAL,
+      minutes: Math.max(1, Math.round(QUIZ_TOTAL * .8))
+    });
+    quiz.historySaved = true;
+  }
+
+  function quizResultPage(quiz) {
+    const percentage = Math.round(quiz.score / QUIZ_TOTAL * 100);
+    return pageHead("twenty questions complete", "クイズ結果", "20問、おつかれさまでした。今日の学習記録に保存しました。", icon("trophy", 13) + " " + quiz.score + " / " + QUIZ_TOTAL) +
+      '<div class="quiz-wrap"><section class="quiz-result rise"><p class="result-label">your score</p><div class="result-score"><strong>' + quiz.score + '</strong><span>/ ' + QUIZ_TOTAL + " correct</span></div><div class=\"result-progress\"><i style=\"width:" + percentage + '%"></i></div><p class="result-message">' + (percentage >= 80 ? "とても良いペースです。" : "間違えた単語をもう一度復習してみましょう。") + '</p><button class="primary-button result-button" data-action="new-quiz">' + icon("rotate", 15) + "もう一度クイズ</button></section></div>";
   }
 
   function quizPage() {
     if (!state.quiz) newQuiz();
     const quiz = state.quiz;
-    const question = WORDS.find(function (word) { return word.id === quiz.question; }) || WORDS[0];
-    const answered = quiz.selected !== null;
-    return pageHead("a tiny daily challenge", "5分クイズ", "意味を思い出すだけで、記憶は少しずつ強くなります。", icon("trophy", 13) + " " + quiz.correct + " correct") +
-      '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + Math.min(quiz.asked + 1, 5) + " / 5</span><span>" + (quiz.asked ? Math.round(quiz.correct / quiz.asked * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + Math.min(quiz.asked / 5 * 100, 100) + '%"></i></div><section class="quiz-card rise"><p class="question-label">この英語の意味は？</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + question.word + icon("speaker", 20) + '</button><p class="question-pronunciation">音声で発音を確認</p><div class="choices">' + quiz.choices.map(function (choice, index) {
+    if (quiz.completed) return quizResultPage(quiz);
+
+    const current = quiz.quizQuestions[quiz.currentQuestionIndex];
+    const question = current.question;
+    const answered = quiz.isAnswered;
+    const questionNumber = quiz.currentQuestionIndex + 1;
+    const progress = (questionNumber - (answered ? 0 : 1)) / QUIZ_TOTAL * 100;
+    return pageHead("a tiny daily challenge", "20問クイズ", "意味を思い出すだけで、記憶は少しずつ強くなります。", icon("trophy", 13) + " " + quiz.score + " correct") +
+      '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + QUIZ_TOTAL + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">この英語の意味は？</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + question.word + icon("speaker", 20) + '</button><p class="question-pronunciation">音声で発音を確認</p><div class="choices">' + current.choices.map(function (choice, index) {
         const correct = answered && choice.id === question.id;
-        const wrong = answered && quiz.selected === choice.id && !correct;
+        const wrong = answered && quiz.selectedAnswer === choice.id && !correct;
         return '<button class="choice ' + (correct ? "correct" : wrong ? "wrong" : "") + '" data-action="answer" data-id="' + choice.id + '" ' + (answered ? "disabled" : "") + '><span class="choice-mark">' + (correct ? icon("check", 14) : wrong ? icon("x", 14) : String.fromCharCode(65 + index)) + "</span>" + choice.meaning + "</button>";
-      }).join("") + "</div>" + (answered ? '<div class="feedback ' + (quiz.selected === question.id ? "" : "wrong") + '"><div><strong>' + (quiz.selected === question.id ? "その調子です。" : "もう一度、例文で確認しましょう。") + '</strong><span>' + question.example + '</span></div><button class="next-button" data-action="next">次へ ›</button></div>' : "") + "</section></div>";
+      }).join("") + "</div>" + (answered ? '<div class="feedback ' + (quiz.selectedAnswer === question.id ? "" : "wrong") + '"><div><strong>' + (quiz.selectedAnswer === question.id ? "その調子です。" : "もう一度、例文で確認しましょう。") + '</strong><span>' + question.example + '</span></div><button class="next-button" data-action="next">' + (questionNumber === QUIZ_TOTAL ? "結果を見る ›" : "次へ ›") + "</button></div>" : "") + "</section></div>";
   }
 
   function weakPage() {
@@ -230,7 +270,7 @@
       '<section class="history-list"><div class="section-head" style="padding:20px 16px 8px;margin:0"><h2>最近のセッション</h2><span class="page-count">local history</span></div>' +
       (state.history.length ? state.history.map(function (entry) {
         const date = new Intl.DateTimeFormat("ja-JP", { month: "short", day: "numeric" }).format(new Date(entry.date));
-        return '<div class="history-row"><span style="color:var(--teal-deep)">' + icon("calendar", 18) + '</span><div class="history-date"><strong>' + date + ' の練習</strong><span>' + entry.minutes + "分 · 5分クイズ</span></div><div class=\"history-score\">" + entry.score + '<small>/' + entry.total + "</small></div></div>";
+         return '<div class="history-row"><span style="color:var(--teal-deep)">' + icon("calendar", 18) + '</span><div class="history-date"><strong>' + date + ' の練習</strong><span>' + entry.minutes + "分 · " + entry.total + "問クイズ</span></div><div class=\"history-score\">" + entry.score + '<small>/' + entry.total + "</small></div></div>";
       }).join("") : '<div class="empty" style="border:0;border-radius:0">まだ学習履歴がありません。</div>') + "</section>";
   }
 
@@ -295,25 +335,34 @@
       persist();
       render();
     } else if (action === "answer") {
-      if (!state.quiz || state.quiz.selected !== null) return;
+      if (!state.quiz || state.quiz.completed || state.quiz.isAnswered) return;
       const id = Number(target.dataset.id);
-      const questionId = state.quiz.question;
-      state.quiz.selected = id;
-      state.quiz.asked += 1;
+      const current = state.quiz.quizQuestions[state.quiz.currentQuestionIndex];
+      const questionId = current.question.id;
+      state.quiz.selectedAnswer = id;
+      state.quiz.isAnswered = true;
       if (id === questionId) {
-        state.quiz.correct += 1;
+        state.quiz.score += 1;
         state.mastery[String(id)] = true;
         state.correct[String(id)] = (state.correct[String(id)] || 0) + 1;
       } else {
         state.wrong[String(questionId)] = (state.wrong[String(questionId)] || 0) + 1;
       }
-      if (state.quiz.asked % 5 === 0) {
-        state.history.unshift({ id: String(Date.now()), date: new Date().toISOString().slice(0, 10), score: state.quiz.correct, total: state.quiz.asked, minutes: Math.max(1, Math.round(state.quiz.asked * .8)) });
-      }
+      if (state.quiz.currentQuestionIndex === QUIZ_TOTAL - 1) recordQuizHistory(state.quiz);
       persist();
       render();
     } else if (action === "next") {
-      if (!state.quiz) return;
+      if (!state.quiz || state.quiz.completed || !state.quiz.isAnswered) return;
+      if (state.quiz.currentQuestionIndex === QUIZ_TOTAL - 1) {
+        state.quiz.completed = true;
+        render();
+        return;
+      }
+      state.quiz.currentQuestionIndex += 1;
+      state.quiz.isAnswered = false;
+      state.quiz.selectedAnswer = null;
+      render();
+    } else if (action === "new-quiz") {
       newQuiz();
       render();
     }
