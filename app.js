@@ -12,7 +12,9 @@
     favorites: "met-favorites",
     wrong: "met-wrong",
     correct: "met-correct",
-    history: "met-history"
+    history: "met-history",
+    selectedBook: "met-selected-book",
+    selectedChapter: "met-selected-chapter"
   };
   const DEFAULT_MASTERY = { "1": true, "2": true, "4": true, "5": true, "8": true, "9": true, "11": true, "14": true, "17": true, "18": true, "19": true };
   const DEFAULT_WRONG = { "3": 1, "7": 2, "12": 1, "16": 1 };
@@ -29,6 +31,8 @@
     wrong: read(KEYS.wrong, DEFAULT_WRONG),
     correct: read(KEYS.correct, {}),
     history: read(KEYS.history, DEFAULT_HISTORY),
+    selectedBook: read(KEYS.selectedBook, "distinction1"),
+    selectedChapter: read(KEYS.selectedChapter, "all"),
     search: "",
     filter: "all",
     mobileMenu: false,
@@ -55,6 +59,63 @@
     save(KEYS.correct, state.correct);
     save(KEYS.history, state.history);
   }
+
+  const BOOKS = [
+    { id: "distinction1", label: "Distinction 1" },
+    { id: "distinction2", label: "Distinction 2" },
+    { id: "distinction3", label: "Distinction 3" },
+    { id: "distinction4", label: "Distinction 4" },
+    { id: "distinction5", label: "Distinction 5" },
+    { id: "distinction6", label: "Distinction 6" }
+  ];
+
+  function selectedBookLabel() {
+    const book = BOOKS.find(function (item) { return item.id === state.selectedBook; });
+    return book ? book.label : "Distinction 1";
+  }
+
+  function selectedChapterLabel() {
+    return state.selectedChapter === "all" ? "全Chapter" : "Chapter " + state.selectedChapter;
+  }
+
+  function selectedWords() {
+    if (state.selectedChapter === "all") return window.filterWordsByBook(state.selectedBook);
+    return window.filterWordsByChapter(state.selectedBook, Number(state.selectedChapter));
+  }
+
+  function getSelectedBook() {
+    return state.selectedBook;
+  }
+
+  function getSelectedChapter() {
+    return state.selectedChapter;
+  }
+
+  function getSelectedWords() {
+    return selectedWords();
+  }
+
+  window.getSelectedBook = getSelectedBook;
+  window.getSelectedChapter = getSelectedChapter;
+  window.getSelectedWords = getSelectedWords;
+
+  function setStudySelection(book, chapter) {
+    const validBook = BOOKS.some(function (item) { return item.id === book; }) ? book : "distinction1";
+    state.selectedBook = validBook;
+    state.selectedChapter = chapter === "all" || [1, 2, 3, 4].indexOf(Number(chapter)) >= 0 ? String(chapter) : "all";
+    save(KEYS.selectedBook, state.selectedBook);
+    save(KEYS.selectedChapter, state.selectedChapter);
+    state.quiz = null;
+  }
+
+  function ensureStudySelection() {
+    if (!BOOKS.some(function (item) { return item.id === state.selectedBook; })) state.selectedBook = "distinction1";
+    if (!(state.selectedChapter === "all" || [1, 2, 3, 4].indexOf(Number(state.selectedChapter)) >= 0)) state.selectedChapter = "all";
+    save(KEYS.selectedBook, state.selectedBook);
+    save(KEYS.selectedChapter, state.selectedChapter);
+  }
+
+  ensureStudySelection();
 
   function icon(name, size) {
     const s = size || 18;
@@ -113,7 +174,7 @@
     const menu = state.mobileMenu ? '<div class="mobile-menu">' + navLinks("mobile", route) + "</div>" : "";
     return '<div class="app-shell">' +
       '<aside class="sidebar"><a class="sidebar-brand" href="#/"><span class="brand-mark">m</span><span><span class="brand-name">My English</span><span class="brand-sub">trainer</span></span></a><p class="nav-label">学習メニュー</p><nav class="side-nav">' + navLinks("side", route) + '</nav><div class="streak-box"><div class="streak-title"><span>習慣</span><span>7 DAYS</span></div><div class="streak-number">' + streakDays() + '<small>日連続</small></div><div class="streak-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></aside>' +
-      '<div class="main-column"><header class="topbar"><button class="menu-button" data-action="menu" aria-label="メニュー">☰</button><div class="desktop-message"><small>your small daily practice</small><strong>' + (route === "/" ? "焦らず、ひとつずつ。" : "今日も少しだけ、英語と向き合う。") + "</strong></div><a class=\"quick-button\" href=\"#/quiz\">" + icon("play", 14) + "5分クイズ</a></header>" + menu + '<main class="content">' + content + '</main><nav class="bottom-nav">' + bottomLinks(route) + "</nav></div></div>";
+      '<div class="main-column"><header class="topbar"><button class="menu-button" data-action="menu" aria-label="メニュー">☰</button><a class="study-selector" href="#/study"><span class="study-selector-book">' + selectedBookLabel() + '</span><span class="study-selector-chapter">' + selectedChapterLabel() + '</span></a><div class="desktop-message"><small>your small daily practice</small><strong>' + (route === "/" ? "焦らず、ひとつずつ。" : "今日も少しだけ、英語と向き合う。") + "</strong></div><a class=\"quick-button\" href=\"#/quiz\">" + icon("play", 14) + "5分クイズ</a></header>" + menu + '<main class="content">' + content + '</main><nav class="bottom-nav">' + bottomLinks(route) + "</nav></div></div>";
   }
 
   function pageHead(eyebrow, title, description, count) {
@@ -130,7 +191,7 @@
   }
 
   function weakWords() {
-    return WORDS.filter(function (word) {
+    return selectedWords().filter(function (word) {
       return (state.wrong[String(word.id)] || 0) > 0 || !state.mastery[String(word.id)];
     });
   }
@@ -139,20 +200,44 @@
     return state.history.length ? 7 : 0;
   }
 
+  function studyPage() {
+    const currentWords = selectedWords();
+    const counts = [1, 2, 3, 4].map(function (chapter) {
+      return window.filterWordsByChapter(state.selectedBook, chapter).length;
+    });
+    return pageHead("choose your study set", "教材・Chapter", "勉強したい教材とChapterを選んでください。選んだ範囲が単語帳とクイズの対象になります。", currentWords.length + " words") +
+      '<section class="study-panel rise"><div class="study-panel-head"><div><p class="card-title">教材</p><p class="card-note">現在はDistinction 1〜6に対応しています。</p></div></div><div class="study-book-grid">' +
+      BOOKS.map(function (book) {
+        const active = state.selectedBook === book.id;
+        const count = window.filterWordsByBook(book.id).length;
+        return '<button class="study-book-button ' + (active ? "active" : "") + '" data-action="select-book" data-book="' + book.id + '"><strong>' + book.label + '</strong><span>' + count + '語登録済み</span></button>';
+      }).join("") +
+      '</div></section>' +
+      '<section class="study-panel rise"><div class="study-panel-head"><div><p class="card-title">Chapter</p><p class="card-note">教材を変更するとChapterは「全Chapter」に戻ります。</p></div></div><div class="chapter-grid">' +
+      '<button class="chapter-button ' + (state.selectedChapter === "all" ? "active" : "") + '" data-action="select-chapter" data-chapter="all"><strong>全Chapter</strong><span>' + window.filterWordsByBook(state.selectedBook).length + '語</span></button>' +
+      [1, 2, 3, 4].map(function (chapter, index) {
+        return '<button class="chapter-button ' + (String(state.selectedChapter) === String(chapter) ? "active" : "") + '" data-action="select-chapter" data-chapter="' + chapter + '"><strong>Chapter ' + chapter + '</strong><span>' + counts[index] + '語</span></button>';
+      }).join("") +
+      '</div></section>' +
+      (currentWords.length ? '<section class="study-current card rise"><div><p class="eyebrow">current study set</p><h2>' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</h2><p class="card-note">' + currentWords.length + '語が学習対象です。</p></div><a class="primary-button" href="#/quiz">' + icon("play", 15) + 'クイズを始める</a></section>' : '<section class="empty rise"><strong>この教材・Chapterにはまだ単語が登録されていません。</strong><p>単語データを追加すると、ここから学習できるようになります。</p></section>');
+  }
+
   function homePage() {
-    const learned = Object.keys(state.mastery).filter(function (key) { return state.mastery[key]; }).length;
+    const studyWords = selectedWords();
+    const studyLearned = studyWords.filter(function (word) { return !!state.mastery[String(word.id)]; }).length;
     const weak = weakWords();
     const today = new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
     return '<div class="rise" style="margin-bottom:24px;color:var(--muted);font-size:12px;font-weight:700">' + icon("calendar", 15) + " " + today + "</div>" +
-      '<section class="hero rise"><div class="hero-content"><p class="eyebrow">good to see you</p><h1>今日は、<br><strong>5分だけ。</strong></h1><p class="hero-copy">短い時間でも、続けた分だけ言葉はあなたのものになります。</p><a class="primary-button" href="#/quiz">' + icon("play", 16) + "今日の練習を始める</a></div></section>" +
+      '<section class="hero rise"><div class="hero-content"><p class="eyebrow">' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</p><h1>今日は、<br><strong>5分だけ。</strong></h1><p class="hero-copy">短い時間でも、続けた分だけ言葉はあなたのものになります。</p><a class="primary-button" href="#/quiz">' + icon("play", 16) + "今日の練習を始める</a></div></section>" +
       '<div class="grid two-col"><section class="card rise"><div class="card-head"><div><p class="card-title">今週のペース</p><p class="card-note">急がず、でも途切れずに。</p></div><span class="badge">7日連続</span></div><div class="bars">' + ["月", "火", "水", "木", "金", "土", "日"].map(function (day, index) { return '<div class="bar-item"><i style="height:' + [30, 48, 34, 58, 43, 64, 55][index] + 'px"></i><span>' + day + "</span></div>"; }).join("") + "</div></section>" +
-      '<section class="card rise"><div class="card-head"><div><p class="card-title">単語の進み具合</p><p class="card-note">全20語のコレクション</p></div>' + icon("target", 19) + '</div><div class="progress-number"><strong>' + learned + '</strong><span>/ 20 語</span></div><div class="progress-track"><i style="width:' + (learned / WORDS.length * 100) + '%"></i></div></section></div>' +
+      '<section class="card rise"><div class="card-head"><div><p class="card-title">単語の進み具合</p><p class="card-note">' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</p></div>' + icon("target", 19) + '</div><div class="progress-number"><strong>' + studyLearned + '</strong><span>/ ' + studyWords.length + ' 語</span></div><div class="progress-track"><i style="width:' + (studyWords.length ? studyLearned / studyWords.length * 100 : 0) + '%"></i></div></section></div>' +
       '<div class="section-split section"><section><div class="section-head"><div><p class="section-kicker">pick up where you left off</p><h2>復習すると、もっと残る</h2></div><a class="text-link" href="#/weak">すべて見る ›</a></div><div class="word-grid">' + weak.slice(0, 4).map(wordRow).join("") + "</div></section><section class=\"card\"><p class=\"card-title\">ひとことメモ</p><p class=\"memo\" style=\"margin-top:18px\">完璧な一日より、<br><strong style=\"color:var(--teal-deep)\">続いた一日。</strong></p><p class=\"card-note\">前回の学習 きのう</p></section></div>";
   }
 
   function vocabularyPage() {
     const term = state.search.toLowerCase();
-    const filtered = WORDS.filter(function (word) {
+    const studyWords = selectedWords();
+    const filtered = studyWords.filter(function (word) {
       const matchesTerm = !term || word.word.indexOf(term) >= 0 || word.meaning.indexOf(state.search) >= 0;
       const matchesFilter = state.filter === "all" ||
         (state.filter === "learned" && state.mastery[String(word.id)]) ||
@@ -161,7 +246,7 @@
       return matchesTerm && matchesFilter;
     });
     const filters = [["all", "すべて"], ["unlearned", "まだ覚えていない"], ["learned", "覚えた"], ["favorite", "お気に入り"]];
-    return pageHead("your vocabulary", "単語帳", "気になった単語をいつでも見返せます。声に出すだけでも、立派な復習です。", filtered.length + " / " + WORDS.length + " words") +
+    return pageHead("your vocabulary", "単語帳", selectedBookLabel() + " · " + selectedChapterLabel() + " の単語を表示しています。", filtered.length + " / " + studyWords.length + " words") +
       '<div class="search-row"><label class="search-box">' + icon("search", 18) + '<input id="word-search" class="search-input" type="search" value="' + escapeHtml(state.search) + '" placeholder="英単語や意味を検索" autocomplete="off"></label><div class="filter-row">' + filters.map(function (filter) { return '<button class="filter-button ' + (state.filter === filter[0] ? "active" : "") + '" data-action="filter" data-filter="' + filter[0] + '">' + filter[1] + "</button>"; }).join("") + "</div></div>" +
       (filtered.length ? '<div class="word-grid">' + filtered.map(wordRow).join("") + "</div>" : '<div class="empty"><strong>見つかりませんでした</strong><p>検索語やフィルターを変えてみてください。</p></div>');
   }
@@ -178,24 +263,34 @@
     return items.slice().sort(function () { return Math.random() - .5; });
   }
 
-  function makeChoices(correct) {
-    return shuffle([correct].concat(shuffle(WORDS.filter(function (word) {
+  function makeChoices(correct, pool) {
+    const source = pool && pool.length ? pool : WORDS;
+    return shuffle([correct].concat(shuffle(source.filter(function (word) {
       return word.id !== correct.id;
     })).slice(0, 3)));
   }
 
   function newQuiz() {
-    const quizQuestions = shuffle(WORDS).slice(0, QUIZ_TOTAL).map(function (word) {
-      return { question: word, choices: makeChoices(word) };
+    const pool = selectedWords();
+    const total = Math.min(QUIZ_TOTAL, pool.length);
+    if (!total) {
+      state.quiz = null;
+      return;
+    }
+    const quizQuestions = shuffle(pool).slice(0, total).map(function (word) {
+      return { question: word, choices: makeChoices(word, pool) };
     });
     state.quiz = {
       quizQuestions: quizQuestions,
+      total: total,
       currentQuestionIndex: 0,
       isAnswered: false,
       selectedAnswer: null,
       score: 0,
       historySaved: false,
-      completed: false
+      completed: false,
+      book: state.selectedBook,
+      chapter: state.selectedChapter
     };
   }
 
@@ -205,34 +300,40 @@
       id: String(Date.now()),
       date: new Date().toISOString().slice(0, 10),
       score: quiz.score,
-      total: QUIZ_TOTAL,
-      minutes: Math.max(1, Math.round(QUIZ_TOTAL * .8))
+      total: quiz.total,
+      minutes: Math.max(1, Math.round(quiz.total * .8)),
+      book: quiz.book,
+      chapter: quiz.chapter
     });
     quiz.historySaved = true;
   }
 
   function quizResultPage(quiz) {
-    const percentage = Math.round(quiz.score / QUIZ_TOTAL * 100);
-    return pageHead("twenty questions complete", "クイズ結果", "20問、おつかれさまでした。今日の学習記録に保存しました。", icon("trophy", 13) + " " + quiz.score + " / " + QUIZ_TOTAL) +
-      '<div class="quiz-wrap"><section class="quiz-result rise"><p class="result-label">your score</p><div class="result-score"><strong>' + quiz.score + '</strong><span>/ ' + QUIZ_TOTAL + " correct</span></div><div class=\"result-progress\"><i style=\"width:" + percentage + '%"></i></div><p class="result-message">' + (percentage >= 80 ? "とても良いペースです。" : "間違えた単語をもう一度復習してみましょう。") + '</p><button class="primary-button result-button" data-action="new-quiz">' + icon("rotate", 15) + "もう一度クイズ</button></section></div>";
+    const percentage = Math.round(quiz.score / quiz.total * 100);
+    return pageHead("quiz complete", "クイズ結果", selectedBookLabel() + " · " + selectedChapterLabel() + " の学習記録を保存しました。", icon("trophy", 13) + " " + quiz.score + " / " + quiz.total) +
+      `<div class="quiz-wrap"><section class="quiz-result rise"><p class="result-label">your score</p><div class="result-score"><strong>${quiz.score}</strong><span>/ ${quiz.total} correct</span></div><div class="result-progress"><i style="width:${percentage}%"></i></div><p class="result-message">${percentage >= 80 ? "とても良いペースです。" : "間違えた単語をもう一度復習してみましょう。"}</p><button class="primary-button result-button" data-action="new-quiz">${icon("rotate", 15)}もう一度クイズ</button></section></div>`;
   }
 
   function quizPage() {
     if (!state.quiz) newQuiz();
     const quiz = state.quiz;
+    if (!quiz) {
+      return pageHead("no words yet", "クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " にはまだ単語が登録されていません。", "") +
+        '<div class="empty"><strong>学習できる単語がありません。</strong><p>教材・Chapterを変更するか、単語データを追加してください。</p><a class="primary-button" href="#/study">教材・Chapterを選ぶ</a></div>';
+    }
     if (quiz.completed) return quizResultPage(quiz);
 
     const current = quiz.quizQuestions[quiz.currentQuestionIndex];
     const question = current.question;
     const answered = quiz.isAnswered;
     const questionNumber = quiz.currentQuestionIndex + 1;
-    const progress = (questionNumber - (answered ? 0 : 1)) / QUIZ_TOTAL * 100;
-    return pageHead("a tiny daily challenge", "20問クイズ", "意味を思い出すだけで、記憶は少しずつ強くなります。", icon("trophy", 13) + " " + quiz.score + " correct") +
-      '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + QUIZ_TOTAL + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">この英語の意味は？</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + question.word + icon("speaker", 20) + '</button><p class="question-pronunciation">音声で発音を確認</p><div class="choices">' + current.choices.map(function (choice, index) {
+    const progress = (questionNumber - (answered ? 0 : 1)) / quiz.total * 100;
+    return pageHead("a tiny daily challenge", "20問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · 4択で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
+      '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + quiz.total + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">この英語の意味は？</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + question.word + icon("speaker", 20) + '</button><p class="question-pronunciation">音声で発音を確認</p><div class="choices">' + current.choices.map(function (choice, index) {
         const correct = answered && choice.id === question.id;
         const wrong = answered && quiz.selectedAnswer === choice.id && !correct;
         return '<button class="choice ' + (correct ? "correct" : wrong ? "wrong" : "") + '" data-action="answer" data-id="' + choice.id + '" ' + (answered ? "disabled" : "") + '><span class="choice-mark">' + (correct ? icon("check", 14) : wrong ? icon("x", 14) : String.fromCharCode(65 + index)) + "</span>" + choice.meaning + "</button>";
-      }).join("") + "</div>" + (answered ? '<div class="feedback ' + (quiz.selectedAnswer === question.id ? "" : "wrong") + '"><div><strong>' + (quiz.selectedAnswer === question.id ? "その調子です。" : "もう一度、例文で確認しましょう。") + '</strong><span>' + question.example + '</span></div><button class="next-button" data-action="next">' + (questionNumber === QUIZ_TOTAL ? "結果を見る ›" : "次へ ›") + "</button></div>" : "") + "</section></div>";
+      }).join("") + "</div>" + (answered ? '<div class="feedback ' + (quiz.selectedAnswer === question.id ? "" : "wrong") + '"><div><strong>' + (quiz.selectedAnswer === question.id ? "その調子です。" : "もう一度、例文で確認しましょう。") + '</strong><span>' + question.example + '</span></div><button class="next-button" data-action="next">' + (questionNumber === quiz.total ? "結果を見る ›" : "次へ ›") + "</button></div>" : "") + "</section></div>";
   }
 
   function weakPage() {
@@ -276,6 +377,7 @@
     const route = currentRoute();
     let content;
     if (route === "/") content = homePage();
+    else if (route === "/study") content = studyPage();
     else if (route === "/vocabulary") content = vocabularyPage();
     else if (route === "/quiz") content = quizPage();
     else if (route === "/weak") content = weakPage();
@@ -298,6 +400,12 @@
     const action = target.dataset.action;
     if (action === "menu") {
       state.mobileMenu = !state.mobileMenu;
+      render();
+    } else if (action === "select-book") {
+      setStudySelection(target.dataset.book, "all");
+      render();
+    } else if (action === "select-chapter") {
+      setStudySelection(state.selectedBook, target.dataset.chapter);
       render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);
@@ -328,12 +436,12 @@
       } else {
         state.wrong[String(questionId)] = (state.wrong[String(questionId)] || 0) + 1;
       }
-      if (state.quiz.currentQuestionIndex === QUIZ_TOTAL - 1) recordQuizHistory(state.quiz);
+      if (state.quiz.currentQuestionIndex === state.quiz.total - 1) recordQuizHistory(state.quiz);
       persist();
       render();
     } else if (action === "next") {
       if (!state.quiz || state.quiz.completed || !state.quiz.isAnswered) return;
-      if (state.quiz.currentQuestionIndex === QUIZ_TOTAL - 1) {
+      if (state.quiz.currentQuestionIndex === state.quiz.total - 1) {
         state.quiz.completed = true;
         render();
         return;

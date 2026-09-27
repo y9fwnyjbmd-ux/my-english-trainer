@@ -254,3 +254,74 @@ h2 { margin-bottom: 6px; font-size: 21px; line-height: 1.2; letter-spacing: -.04
   .section-split { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 32px; }
   .word-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.study-selector {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 48vw;
+  flex-direction: column;
+  justify-content: center;
+  margin-left: 10px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,254,250,.72);
+  line-height: 1.15;
+}
+.study-selector-book {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.study-selector-chapter {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+.study-panel {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255,254,250,.74);
+}
+.study-panel-head { margin-bottom: 14px; }
+.study-book-grid, .chapter-grid { display: grid; gap: 9px; }
+.study-book-button, .chapter-button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(247,245,239,.45);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color .2s, background .2s, transform .2s;
+}
+.study-book-button:hover, .chapter-button:hover { border-color: rgba(49,93,85,.42); transform: translateY(-1px); }
+.study-book-button.active, .chapter-button.active {
+  border-color: var(--teal);
+  background: var(--teal-pale);
+}
+.study-book-button strong, .chapter-button strong { font-size: 13px; }
+.study-book-button span, .chapter-button span { color: var(--muted); font-size: 10px; }
+.study-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.study-current h2 { margin-bottom: 2px; }
+.study-current .eyebrow { margin-bottom: 5px; }
+
+@media (min-width: 600px) {
+  .study-book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chapter-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
