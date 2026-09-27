@@ -14,7 +14,8 @@
     correct: "met-correct",
     history: "met-history",
     selectedBook: "met-selected-book",
-    selectedChapter: "met-selected-chapter"
+    selectedChapter: "met-selected-chapter",
+    quizMode: "met-quiz-mode"
   };
   const DEFAULT_MASTERY = { "1": true, "2": true, "4": true, "5": true, "8": true, "9": true, "11": true, "14": true, "17": true, "18": true, "19": true };
   const DEFAULT_WRONG = { "3": 1, "7": 2, "12": 1, "16": 1 };
@@ -24,6 +25,12 @@
     { id: "seed-3", date: "2024-06-10", score: 7, total: 10, minutes: 11 }
   ];
   const QUIZ_TOTAL = 20;
+  const QUIZ_MODES = [
+    { id: "en-ja", label: "英語 → 日本語", description: "英単語を見て、日本語の意味を答える", status: "次のSTEPで対応" },
+    { id: "ja-en", label: "日本語 → 英語", description: "日本語の意味を見て、英単語を答える", status: "次のSTEPで対応" },
+    { id: "example-word", label: "例文 → 単語", description: "例文を見て、該当する英単語を答える", status: "次のSTEPで対応" },
+    { id: "multiple-choice", label: "4択", description: "英単語を見て、4つの日本語から選ぶ", status: "利用可能" }
+  ];
 
   const state = {
     mastery: read(KEYS.mastery, DEFAULT_MASTERY),
@@ -33,6 +40,7 @@
     history: read(KEYS.history, DEFAULT_HISTORY),
     selectedBook: read(KEYS.selectedBook, "distinction1"),
     selectedChapter: read(KEYS.selectedChapter, "all"),
+    quizMode: read(KEYS.quizMode, "multiple-choice"),
     search: "",
     filter: "all",
     mobileMenu: false,
@@ -83,6 +91,22 @@
     return window.filterWordsByChapter(state.selectedBook, Number(state.selectedChapter));
   }
 
+  function selectedQuizMode() {
+    return QUIZ_MODES.find(function (mode) { return mode.id === state.quizMode; }) || QUIZ_MODES[3];
+  }
+
+  function setQuizMode(modeId) {
+    const mode = QUIZ_MODES.find(function (item) { return item.id === modeId; });
+    if (!mode) return;
+    if (mode.id !== "multiple-choice") {
+      alert("このクイズ方式はSTEP 3-2以降で対応します。現在は4択を利用できます。");
+      return;
+    }
+    state.quizMode = mode.id;
+    save(KEYS.quizMode, state.quizMode);
+    state.quiz = null;
+  }
+
   function getSelectedBook() {
     return state.selectedBook;
   }
@@ -116,6 +140,10 @@
   }
 
   ensureStudySelection();
+  if (!QUIZ_MODES.some(function (mode) { return mode.id === state.quizMode; })) {
+    state.quizMode = "multiple-choice";
+    save(KEYS.quizMode, state.quizMode);
+  }
 
   function icon(name, size) {
     const s = size || 18;
@@ -308,6 +336,15 @@
     quiz.historySaved = true;
   }
 
+  function quizModeSelector() {
+    const currentMode = selectedQuizMode();
+    return '<section class="quiz-mode-panel rise"><div class="quiz-mode-head"><div><p class="card-title">クイズ方式</p><p class="card-note">今後、4つの方式から選べるようになります。</p></div><span class="badge">現在：' + currentMode.label + '</span></div><div class="quiz-mode-grid">' + QUIZ_MODES.map(function (mode) {
+      const active = state.quizMode === mode.id;
+      const available = mode.id === "multiple-choice";
+      return '<button class="quiz-mode-button ' + (active ? "active" : "") + (!available ? " disabled" : "") + '" data-action="select-quiz-mode" data-mode="' + mode.id + '" ' + (!available ? 'aria-disabled="true"' : "") + '><span class="quiz-mode-title">' + mode.label + '</span><span class="quiz-mode-description">' + mode.description + '</span><span class="quiz-mode-status">' + (available ? (active ? "選択中" : "選択する") : mode.status) + '</span></button>';
+    }).join("") + '</div></section>';
+  }
+
   function quizResultPage(quiz) {
     const percentage = Math.round(quiz.score / quiz.total * 100);
     return pageHead("quiz complete", "クイズ結果", selectedBookLabel() + " · " + selectedChapterLabel() + " の学習記録を保存しました。", icon("trophy", 13) + " " + quiz.score + " / " + quiz.total) +
@@ -328,7 +365,8 @@
     const answered = quiz.isAnswered;
     const questionNumber = quiz.currentQuestionIndex + 1;
     const progress = (questionNumber - (answered ? 0 : 1)) / quiz.total * 100;
-    return pageHead("a tiny daily challenge", "20問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · 4択で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
+    return pageHead("a tiny daily challenge", "20問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · " + selectedQuizMode().label + "で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
+      quizModeSelector() +
       '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + quiz.total + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">この英語の意味は？</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + question.word + icon("speaker", 20) + '</button><p class="question-pronunciation">音声で発音を確認</p><div class="choices">' + current.choices.map(function (choice, index) {
         const correct = answered && choice.id === question.id;
         const wrong = answered && quiz.selectedAnswer === choice.id && !correct;
@@ -406,6 +444,9 @@
       render();
     } else if (action === "select-chapter") {
       setStudySelection(state.selectedBook, target.dataset.chapter);
+      render();
+    } else if (action === "select-quiz-mode") {
+      setQuizMode(target.dataset.mode);
       render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);
