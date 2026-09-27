@@ -2,30 +2,10 @@
 (function () {
   "use strict";
 
-  const WORDS = [
-    ["achieve", "達成する", "She achieved her goal through daily practice.", "彼女は毎日の練習で目標を達成しました。", "動詞", "中級"],
-    ["improve", "改善する、上達する", "I want to improve my English speaking skills.", "英語を話す力を上達させたいです。", "動詞", "初級"],
-    ["opportunity", "機会", "This is a great opportunity to learn.", "これは学ぶための素晴らしい機会です。", "名詞", "中級"],
-    ["confident", "自信のある", "You will feel more confident after practicing.", "練習すれば、もっと自信がつきます。", "形容詞", "中級"],
-    ["habit", "習慣", "Reading every morning is a good habit.", "毎朝読むことはよい習慣です。", "名詞", "初級"],
-    ["focus", "集中する、焦点", "Please focus on the most important words.", "最も大切な単語に集中してください。", "動詞・名詞", "初級"],
-    ["review", "復習する、復習", "I review new words before I go to bed.", "寝る前に新しい単語を復習します。", "動詞・名詞", "初級"],
-    ["remember", "覚えている、思い出す", "Do you remember this word from yesterday?", "昨日のこの単語を覚えていますか？", "動詞", "初級"],
-    ["challenge", "挑戦、挑戦する", "Learning a new language is a fun challenge.", "新しい言語を学ぶことは楽しい挑戦です。", "名詞・動詞", "中級"],
-    ["progress", "進歩、進歩する", "You are making great progress.", "あなたは大きく進歩しています。", "名詞・動詞", "中級"],
-    ["practice", "練習する、練習", "Practice makes your pronunciation clearer.", "練習すると発音がより明瞭になります。", "動詞・名詞", "初級"],
-    ["discover", "発見する", "I discovered a useful way to study.", "役に立つ勉強法を発見しました。", "動詞", "中級"],
-    ["express", "表現する", "It is important to express your ideas clearly.", "自分の考えを明確に表現することが大切です。", "動詞", "中級"],
-    ["meaningful", "意味のある", "Every small step can be meaningful.", "小さな一歩にも意味があります。", "形容詞", "中級"],
-    ["necessary", "必要な", "Rest is necessary for effective learning.", "効果的な学習には休息が必要です。", "形容詞", "中級"],
-    ["similar", "似ている", "These two words have similar meanings.", "この2つの単語は似た意味を持っています。", "形容詞", "中級"],
-    ["simple", "簡単な、単純な", "Start with a simple sentence.", "簡単な文から始めましょう。", "形容詞", "初級"],
-    ["continue", "続ける", "Continue studying at your own pace.", "自分のペースで勉強を続けてください。", "動詞", "初級"],
-    ["prepare", "準備する", "I prepare a short study plan every Sunday.", "毎週日曜日に短い学習計画を準備します。", "動詞", "中級"],
-    ["success", "成功", "Small daily actions lead to success.", "毎日の小さな行動が成功につながります。", "名詞", "初級"]
-  ].map(function (item, index) {
-    return { id: index + 1, word: item[0], meaning: item[1], example: item[2], translation: item[3], part: item[4], level: item[5] };
-  });
+  const WORDS = window.WORDS;
+  if (!Array.isArray(WORDS)) {
+    throw new Error("words.js must be loaded before app.js");
+  }
 
   const KEYS = {
     mastery: "met-mastery",

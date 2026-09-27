@@ -1,6 +1,6 @@
-const CACHE_NAME = "my-english-trainer-static-v2";
+const CACHE_NAME = "my-english-trainer-static-v3";
 const CACHE_PREFIX = "my-english-trainer-static-";
-const APP_SHELL = ["./", "./index.html", "./style.css", "./app.js", "./manifest.json"];
+const APP_SHELL = ["./", "./index.html", "./style.css", "./app.js", "./words.js", "./manifest.json"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
