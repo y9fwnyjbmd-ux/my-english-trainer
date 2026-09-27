@@ -27,7 +27,7 @@
   const QUIZ_TOTAL = 20;
   const QUIZ_MODES = [
     { id: "en-ja", label: "英語 → 日本語", description: "英単語を見て、日本語の意味を4択から選ぶ", status: "利用可能" },
-    { id: "ja-en", label: "日本語 → 英語", description: "日本語の意味を見て、英単語を答える", status: "次のSTEPで対応" },
+    { id: "ja-en", label: "日本語 → 英語", description: "日本語の意味を見て、英単語を4択から選ぶ", status: "利用可能" },
     { id: "example-word", label: "例文 → 単語", description: "例文を見て、該当する英単語を答える", status: "次のSTEPで対応" },
     { id: "multiple-choice", label: "4択", description: "英単語を見て、4つの日本語から選ぶ", status: "利用可能" }
   ];
@@ -98,8 +98,8 @@
   function setQuizMode(modeId) {
     const mode = QUIZ_MODES.find(function (item) { return item.id === modeId; });
     if (!mode) return;
-    if (mode.id !== "multiple-choice" && mode.id !== "en-ja") {
-      alert("このクイズ方式は次のSTEPで対応します。現在は「英語 → 日本語」と「4択」を利用できます。");
+    if (["multiple-choice", "en-ja", "ja-en"].indexOf(mode.id) === -1) {
+      alert("このクイズ方式は次のSTEPで対応します。現在は「英語 → 日本語」「日本語 → 英語」「4択」を利用できます。");
       return;
     }
     state.quizMode = mode.id;
@@ -343,7 +343,7 @@
     const currentMode = selectedQuizMode();
     return '<section class="quiz-mode-panel rise"><div class="quiz-mode-head"><div><p class="card-title">クイズ方式</p><p class="card-note">方式を切り替えると、新しいクイズが始まります。</p></div><span class="badge">現在：' + currentMode.label + '</span></div><div class="quiz-mode-grid">' + QUIZ_MODES.map(function (mode) {
       const active = state.quizMode === mode.id;
-      const available = mode.id === "multiple-choice" || mode.id === "en-ja";
+      const available = mode.id === "multiple-choice" || mode.id === "en-ja" || mode.id === "ja-en";
       return '<button class="quiz-mode-button ' + (active ? "active" : "") + (!available ? " disabled" : "") + '" data-action="select-quiz-mode" data-mode="' + mode.id + '" ' + (!available ? 'aria-disabled="true"' : "") + '><span class="quiz-mode-title">' + mode.label + '</span><span class="quiz-mode-description">' + mode.description + '</span><span class="quiz-mode-status">' + (available ? (active ? "選択中" : "選択する") : mode.status) + '</span></button>';
     }).join("") + '</div></section>';
   }
@@ -368,12 +368,13 @@
     const answered = quiz.isAnswered;
     const questionNumber = quiz.currentQuestionIndex + 1;
     const progress = (questionNumber - (answered ? 0 : 1)) / quiz.total * 100;
-    const isEnglishToJapanese = quiz.mode === "en-ja";
-    const questionLabel = isEnglishToJapanese ? "この英単語の意味は？" : "この英語の意味は？";
-    const choiceText = function (choice) { return choice.meaning; };
+    const isJapaneseToEnglish = quiz.mode === "ja-en";
+    const questionLabel = isJapaneseToEnglish ? "この日本語に合う英単語は？" : "この英単語の意味は？";
+    const choiceText = function (choice) { return isJapaneseToEnglish ? choice.word : choice.meaning; };
+    const questionDisplay = isJapaneseToEnglish ? question.meaning : question.word;
     return pageHead("a tiny daily challenge", "20問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · " + selectedQuizMode().label + "で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
       quizModeSelector() +
-      '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + quiz.total + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">' + questionLabel + '</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + question.word + icon("speaker", 20) + '</button><p class="question-pronunciation">音声で発音を確認</p><div class="choices">' + current.choices.map(function (choice, index) {
+      '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + quiz.total + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">' + questionLabel + '</p><button class="question-word" data-action="speak" data-id="' + question.id + '">' + questionDisplay + (isJapaneseToEnglish ? "" : icon("speaker", 20)) + '</button><p class="question-pronunciation">' + (isJapaneseToEnglish ? "英単語を選んでください" : "音声で発音を確認") + '</p><div class="choices">' + current.choices.map(function (choice, index) {
         const correct = answered && choice.id === question.id;
         const wrong = answered && quiz.selectedAnswer === choice.id && !correct;
         return '<button class="choice ' + (correct ? "correct" : wrong ? "wrong" : "") + '" data-action="answer" data-id="' + choice.id + '" ' + (answered ? "disabled" : "") + '><span class="choice-mark">' + (correct ? icon("check", 14) : wrong ? icon("x", 14) : String.fromCharCode(65 + index)) + "</span>" + choiceText(choice) + "</button>";
