@@ -27,7 +27,7 @@
     { id: "seed-2", date: "2024-06-12", score: 6, total: 8, minutes: 7 },
     { id: "seed-3", date: "2024-06-10", score: 7, total: 10, minutes: 11 }
   ];
-  const QUIZ_COUNTS = [10, 20, 30, 50];
+  const QUIZ_COUNTS = [5, 10, 20, 30, 50];
   const QUIZ_SCOPES = [
     { id: "all", label: "すべて", description: "選択した教材・Chapterの全単語から出題" },
     { id: "unlearned", label: "未習得のみ", description: "まだ「覚えた」にしていない単語から出題" },
@@ -58,8 +58,7 @@
     customWords: read(KEYS.customWords, []),
     importDraft: null,
     importMessage: "",
-    importText: "",
-    importMode: "add"
+    importText: ""
   };
 
   function read(key, fallback) {
@@ -309,9 +308,23 @@
   }
 
   function weakWords() {
+    // 「苦手単語」は、実際にクイズで1回以上間違えた単語だけを対象にする。
+    // まだ学習していない単語は「未習得」であり、「苦手」とは分けて扱う。
     return selectedWords().filter(function (word) {
-      return (state.wrong[String(word.id)] || 0) > 0 || !state.mastery[String(word.id)];
+      return (state.wrong[String(word.id)] || 0) > 0;
+    }).sort(function (a, b) {
+      return (state.wrong[String(b.id)] || 0) - (state.wrong[String(a.id)] || 0);
     });
+  }
+
+  function weakWordRow(word) {
+    const learned = !!state.mastery[String(word.id)];
+    const favorite = state.favorites.indexOf(word.id) >= 0;
+    const wrongCount = state.wrong[String(word.id)] || 0;
+    return '<div class="word-row ' + (learned ? "" : "unlearned") + '">' +
+      '<a class="word-link" href="#/word/' + word.id + '"><span class="word-number">' + String(Number(word.number) || 0).padStart(3, "0") + '</span><span class="word-text"><strong>' + word.word + "</strong><span>" + word.meaning + '</span></span></a>' +
+      '<button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="' + word.word + 'をお気に入り">' + icon("star", 17) + '</button>' +
+      '<span class="status unlearned">' + wrongCount + '回ミス</span></div>';
   }
 
   function streakDays() {
@@ -373,28 +386,8 @@
     const word = allWords().find(function (item) { return item.id === id; }) || allWords()[0];
     const learned = !!state.mastery[String(word.id)];
     const favorite = state.favorites.indexOf(word.id) >= 0;
-    const editable = Array.isArray(state.customWords) && state.customWords.some(function (item) { return Number(item.id) === Number(word.id); });
-    const editButton = editable ? '<a class="secondary-button" href="#/edit/' + word.id + '">✎ 編集する</a>' : '';
-    return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + escapeHtml(word.level) + " · " + escapeHtml(word.part) + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + escapeHtml(word.word) + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + escapeHtml(word.meaning) + "</p></section>" +
-      '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + escapeHtml(word.example) + '</p><p class="example-translation">' + escapeHtml(word.translation) + '</p>' + (editButton ? '<div style="margin-top:18px">' + editButton + '</div>' : '') + '</section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
-  }
-
-  function editPage(id) {
-    const word = (Array.isArray(state.customWords) ? state.customWords : []).find(function (item) { return Number(item.id) === Number(id); });
-    if (!word) {
-      return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="empty"><strong>編集できる単語が見つかりません。</strong><p>初期テスト用単語は編集対象ではありません。</p></div>';
-    }
-    return '<a class="back-link" href="#/word/' + word.id + '">← 単語詳細に戻る</a>' +
-      '<section class="data-panel rise"><div class="data-step"><span>単語編集</span><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong></div>' +
-      '<p class="card-note">登録済みの単語を修正できます。教材・Chapter・番号はそのまま保持します。</p>' +
-      '<div style="display:grid;gap:14px">' +
-      '<label><strong>英単語・フレーズ</strong><input id="edit-word" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.word) + '"></label>' +
-      '<label><strong>日本語の意味</strong><textarea id="edit-meaning" class="data-textarea" style="min-height:90px;margin-top:6px">' + escapeHtml(word.meaning) + '</textarea></label>' +
-      '<label><strong>品詞</strong><input id="edit-part" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.part || '') + '"></label>' +
-      '<label><strong>レベル</strong><input id="edit-level" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.level || '') + '"></label>' +
-      '<label><strong>例文</strong><textarea id="edit-example" class="data-textarea" style="min-height:110px;margin-top:6px">' + escapeHtml(word.example) + '</textarea></label>' +
-      '<label><strong>例文の日本語訳</strong><textarea id="edit-translation" class="data-textarea" style="min-height:110px;margin-top:6px">' + escapeHtml(word.translation) + '</textarea></label>' +
-      '</div><div class="data-actions" style="margin-top:18px"><button class="secondary-button" data-action="cancel-edit" data-id="' + word.id + '">キャンセル</button><button class="primary-button" data-action="save-edit" data-id="' + word.id + '">変更を保存</button></div></section>';
+    return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + word.level + " · " + word.part + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + word.word + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + word.meaning + "</p></section>" +
+      '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + word.example + '</p><p class="example-translation">' + word.translation + '</p></section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
   }
 
   function shuffle(items) {
@@ -478,87 +471,13 @@
 
   function maskExampleSentence(example, answerWord) {
     const source = String(example || "");
-    const target = String(answerWord || "").trim();
+    const target = String(answerWord || "");
     if (!target) return source;
-
-    function esc(text) {
-      return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
-
-    function tokenPattern(token) {
-      const t = token.trim();
-      if (!t) return "";
-      if (/^sb$/i.test(t)) return "(?:me|you|him|her|us|them|someone|the\\s+[A-Za-z]+)";
-      if (/^sth$/i.test(t)) return "(?:it|this|that|something|anything|nothing|one|some|any|a|an|the|my|your|his|her|our|their|its|[A-Za-z]+(?:\s+[A-Za-z]+){0,4})";
-      if (/^sb's$/i.test(t)) return "(?:my|your|his|her|our|their|someone's|[A-Za-z]+(?:'s))";
-      if (/^one's$/i.test(t)) return "(?:my|your|his|her|our|their)";
-      if (/^\(sb\)$/i.test(t)) return "(?:me|you|him|her|us|them|someone)";
-      if (/^\(that\)$/i.test(t)) return "(?:that)?";
-      if (/^sth\/sb$/i.test(t)) return "(?:it|this|that|something|me|you|him|her|us|them|the\\s+[A-Za-z]+(?:\\s+[A-Za-z]+){0,2})";
-      return esc(t);
-    }
-
-    const normalized = target.replace(/\\(sb\\)/gi, "(sb)").replace(/\\(sth\\)/gi, "(sth)");
-    const tokens = normalized.split(/(\\s+)/);
-    let patternText = "";
-    tokens.forEach(function (token) {
-      if (/^\\s+$/.test(token)) patternText += "\\s+";
-      else {
-        const p = tokenPattern(token);
-        // Allow common inflections when the first word is a regular verb.
-        if (!patternText && /^[A-Za-z]+$/.test(token) && /(?:ed|ing|s)?$/.test(token)) {
-          const irregular = { drive: "drive|drives|drove|driven|driving", bug: "bug|bugs|bugged|bugging", freak: "freak|freaks|freaked|freaking", give: "give|gives|gave|given|giving", get: "get|gets|got|getting", take: "take|takes|took|taken|taking", put: "put|puts|putting", turn: "turn|turns|turned|turning", keep: "keep|keeps|kept|keeping", make: "make|makes|made|making", call: "call|calls|called|calling", show: "show|shows|showed|shown|showing", throw: "throw|throws|threw|thrown|throwing", pull: "pull|pulls|pulled|pulling", push: "push|pushes|pushed|pushing", carry: "carry|carries|carried|carrying", leave: "leave|leaves|left|leaving", have: "have|has|had|having", hold: "hold|holds|held|holding", cut: "cut|cuts|cutting", break: "break|breaks|broke|broken|breaking", bite: "bite|bites|bit|bitten|biting", wind: "wind|winds|wound|winding", run: "run|runs|ran|running", walk: "walk|walks|walked|walking", set: "set|sets|setting", speak: "speak|speaks|spoke|spoken|speaking", stick: "stick|sticks|stuck|sticking", sing: "sing|sings|sang|sung|singing", ring: "ring|rings|rang|rung|ringing", think: "think|thinks|thought|thinking", look: "look|looks|looked|looking", tell: "tell|tells|told|telling", go: "go|goes|went|gone|going", come: "come|comes|came|coming", bring: "bring|brings|brought|bringing", work: "work|works|worked|working", play: "play|plays|played|playing", hit: "hit|hits|hitting", drop: "drop|drops|dropped|dropping", spot: "spot|spots|spotted|spotting", borrow: "borrow|borrows|borrowed|borrowing", crack: "crack|cracks|cracked|cracking", rough: "rough|roughs|roughed|roughing", nag: "nag|nags|nagged|nagging", spruce: "spruce|spruces|spruced|sprucing", jazz: "jazz|jazzes|jazzed|jazzing", wrap: "wrap|wraps|wrapped|wrapping", park: "park|parks|parked|parking", table: "table|tables|tabled|tabling", ramp: "ramp|ramps|ramped|ramping", sugarcoat: "sugarcoat|sugarcoats|sugarcoated|sugarcoating", "front-load": "front-load|front-loads|front-loaded|front-loading", "drip-feed": "drip-feed|drip-feeds|drip-fed|drip-feeding", weed: "weed|weeds|weeded|weeding", wind: "wind|winds|wound|winding" };
-          if (irregular[token.toLowerCase()]) patternText += "(?:" + irregular[token.toLowerCase()].split("|").map(esc).join("|") + ")";
-          else patternText += p + "(?:s|es|ed|d|ing)?";
-        } else {
-          patternText += p;
-        }
-      }
-    });
-
-    try {
-      const pattern = new RegExp("\\b" + patternText + "\\b", "i");
-      if (pattern.test(source)) return source.replace(pattern, "□□□□");
-    } catch (_) {}
-
-    // Phrasal verbs can place the object between or after the particle.
-    if (/\b(?:sth|sb|sth\/sb)\b/i.test(target)) {
-      const parts = target.split(/\s+/);
-      const verb = parts[0];
-      const particle = parts[parts.length - 1];
-      if (parts.length >= 3 && /^(?:up|off|down|out|back|over|on|in)$/i.test(particle)) {
-        const verbVariants = { turn: "turn|turns|turned|turning", drop: "drop|drops|dropped|dropping", hold: "hold|holds|held|holding", cut: "cut|cuts|cutting", put: "put|puts|putting", take: "take|takes|took|taken|taking", bring: "bring|brings|brought|bringing", get: "get|gets|got|getting", give: "give|gives|gave|given|giving", call: "call|calls|called|calling", wrap: "wrap|wraps|wrapped|wrapping", clear: "clear|clears|cleared|clearing", lock: "lock|locks|locked|locking", roll: "roll|rolls|rolled|rolling", throw: "throw|throws|threw|thrown|throwing", take: "take|takes|took|taken|taking" };
-        const vp = verbVariants[verb.toLowerCase()] || esc(verb) + "(?:s|es|ed|d|ing)?";
-        const obj = "(?:it|this|that|something|the\\s+[A-Za-z]+(?:\\s+[A-Za-z]+){0,2}|me|you|him|her|us|them)";
-        const loose = new RegExp("\\b(?:" + vp + ")\\s+(?:" + obj + "\\s+)?" + esc(particle) + "\\b", "i");
-        if (loose.test(source)) return source.replace(loose, "□□□□");
-      }
-    }
-
-    const fallback = new RegExp(esc(target), "i");
-    if (fallback.test(source)) return source.replace(fallback, "□□□□");
-
-    // 最終フォールバック：完全一致しなくても、実際の例文を残したまま
-    // 対象表現の主要語を隠します。これにより「□□□□」だけになることを防ぎます。
-    const literalWords = normalized.split(/\s+/).filter(function (token) {
-      return token && !/^(?:sb|sth|one's|sb's|sth\/sb|\(sb\)|\(that\))$/i.test(token);
-    });
-    if (literalWords.length) {
-      let fallbackSource = source;
-      let replaced = false;
-      literalWords.slice().sort(function (a, b) { return b.length - a.length; }).forEach(function (token) {
-        if (replaced) return;
-        const wordPattern = new RegExp("\\b" + esc(token) + "(?:s|es|ed|d|ing)?\\b", "i");
-        if (wordPattern.test(fallbackSource)) {
-          fallbackSource = fallbackSource.replace(wordPattern, "□□□□");
-          replaced = true;
-        }
-      });
-      if (replaced) return fallbackSource;
-    }
-
-    // それでも見つからない場合も、例文そのものは表示する。
-    return source || "□□□□";
+    const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp("\\b" + escaped + "\\b", "i");
+    if (pattern.test(source)) return source.replace(pattern, "□□□□");
+    const fallback = new RegExp(escaped, "i");
+    return fallback.test(source) ? source.replace(fallback, "□□□□") : "□□□□";
   }
 
   function quizResultPage(quiz) {
@@ -603,82 +522,26 @@
 
   function weakPage() {
     const weak = weakWords();
-    return pageHead("come back gently", "苦手単語", "間違えた単語と、まだ出会っていない単語をここにまとめています。", '<a class="primary-button" style="min-height:36px;font-size:11px" href="#/quiz">' + icon("play", 13) + "復習クイズ</a>") +
-      '<div class="weak-banner">' + icon("rotate", 16) + "<span><strong>" + weak.length + "語</strong>を自分のペースで復習しましょう。</span></div>" +
-      (weak.length ? '<div class="word-grid">' + weak.map(wordRow).join("") + "</div>" : '<div class="empty"><strong>復習する単語はありません</strong><p>いいペースです。新しい単語にも挑戦してみましょう。</p></div>');
-  }
-
-  function progressWordsForBook(bookId) {
-    // 同じ book + number が初期テスト語と追加語の両方に存在する場合は、
-    // ユーザーが登録・編集した customWords を優先して1語として数えます。
-    const custom = Array.isArray(state.customWords) ? state.customWords : [];
-    const customKeys = {};
-    custom.forEach(function (word) {
-      if (word.book === bookId) customKeys[word.book + "::" + Number(word.number)] = true;
-    });
-    return allWords().filter(function (word) {
-      if (word.book !== bookId) return false;
-      const key = word.book + "::" + Number(word.number);
-      if (customKeys[key]) {
-        return custom.some(function (item) {
-          return item.book === word.book && Number(item.number) === Number(word.number) && Number(item.id) === Number(word.id);
-        });
-      }
-      return true;
-    });
-  }
-
-  function progressStats(words) {
-    const stats = { total: words.length, learned: 0, weak: 0, studying: 0, unlearned: 0 };
-    words.forEach(function (word) {
-      const id = String(word.id);
-      if (state.mastery[id]) {
-        stats.learned += 1;
-      } else if ((state.wrong[id] || 0) > 0) {
-        stats.weak += 1;
-      } else if ((state.correct[id] || 0) > 0) {
-        stats.studying += 1;
-      } else {
-        stats.unlearned += 1;
-      }
-    });
-    stats.rate = stats.total ? Math.round(stats.learned / stats.total * 100) : 0;
-    return stats;
-  }
-
-  function progressStatusCard(label, value, total, className, note) {
-    const rate = total ? Math.round(value / total * 100) : 0;
-    return '<div class="card progress-status-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:8px"><span class="progress-dot ' + className + '" style="width:9px;height:9px;border-radius:50%;background:var(--teal);display:inline-block"></span><strong>' + label + '</strong></div><strong>' + value + '語</strong></div><div class="progress-track" style="margin-top:12px"><i style="width:' + rate + '%"></i></div><small style="display:block;margin-top:8px">' + note + '</small></div>';
-  }
-
-  function chapterProgressCard(chapter, words) {
-    const stats = progressStats(words);
-    return '<section class="card chapter-progress-card"><div class="card-head"><div><p class="card-title">Chapter ' + chapter + '</p><p class="card-note">' + stats.learned + ' / ' + stats.total + '語を修得済み</p></div><strong style="font-size:24px;color:var(--teal-deep)">' + stats.rate + '%</strong></div><div class="progress-track"><i style="width:' + stats.rate + '%"></i></div><div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:12px;font-size:12px;color:var(--text-muted)"><span>修得 ' + stats.learned + '</span><span>学習中 ' + stats.studying + '</span><span>苦手 ' + stats.weak + '</span><span>未学習 ' + stats.unlearned + '</span></div></section>';
+    const quickCounts = [5, 10, 20];
+    const quickButtons = weak.length ? '<section class="card rise" style="margin-bottom:20px"><div class="card-head"><div><p class="card-title">苦手単語だけで復習</p><p class="card-note">間違えた回数が多い単語から優先して出題します。</p></div><span class="badge">' + weak.length + '語</span></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">' + quickCounts.map(function (count) {
+      const actual = Math.min(count, weak.length);
+      return '<button class="secondary-button" data-action="weak-quiz" data-count="' + count + '" style="min-height:42px">' + actual + '問で復習</button>';
+    }).join("") + '</div></section>' : '';
+    return pageHead("come back gently", "苦手単語", "クイズで間違えた単語を集めています。まだ学習していない単語とは分けて管理します。", weak.length + "語") +
+      '<div class="weak-banner">' + icon("rotate", 16) + "<span><strong>" + weak.length + "語</strong>が復習対象です。正解を重ねると苦手度が下がります。</span></div>" +
+      quickButtons +
+      (weak.length ? '<div class="word-grid">' + weak.map(weakWordRow).join("") + "</div>" : '<div class="empty"><strong>まだ苦手単語はありません</strong><p>クイズで間違えた単語がここに追加されます。まずは通常のクイズに挑戦してみましょう。</p><a class="primary-button" href="#/quiz">' + icon("play", 15) + 'クイズを始める</a></div>');
   }
 
   function historyPage() {
     const average = state.history.length ? Math.round(state.history.reduce(function (sum, item) { return sum + item.score / item.total; }, 0) / state.history.length * 100) : 0;
     const minutes = state.history.reduce(function (sum, item) { return sum + item.minutes; }, 0);
-    const bookWords = progressWordsForBook(state.selectedBook);
-    const bookStats = progressStats(bookWords);
-    const chapterCards = [1, 2, 3, 4].map(function (chapter) {
-      return chapterProgressCard(chapter, bookWords.filter(function (word) { return Number(word.chapter) === chapter; }));
-    }).join('');
-
     return pageHead("your learning trail", "学習の記録", "積み重ねは、あとから見るとちゃんと道になっています。") +
-      '<section class="card rise"><div class="card-head"><div><p class="eyebrow">' + escapeHtml(selectedBookLabel()) + '</p><h2>単語の進み具合</h2><p class="card-note">「覚えた」にした単語を修得済みとして集計しています。</p></div><div style="display:flex;align-items:baseline;gap:2px"><strong style="font-size:42px;color:var(--teal-deep);line-height:1">' + bookStats.rate + '</strong><span>%</span></div></div><div class="progress-track" style="height:12px"><i style="width:' + bookStats.rate + '%"></i></div><div style="margin-top:12px"><strong style="font-size:24px">' + bookStats.learned + '</strong><span> / ' + bookStats.total + '語</span></div></section>' +
-      '<div class="grid two-col">' +
-        progressStatusCard('修得済み', bookStats.learned, bookStats.total, 'learned', '「覚えた」にした単語') +
-        progressStatusCard('学習中', bookStats.studying, bookStats.total, 'studying', '正解経験はあるが未修得の単語') +
-        progressStatusCard('苦手', bookStats.weak, bookStats.total, 'weak', 'クイズで間違えた未修得単語') +
-        progressStatusCard('未学習', bookStats.unlearned, bookStats.total, 'unlearned', 'まだ学習記録がない単語') +
-      '</div>' +
-      '<section class="section rise"><div class="section-head"><div><p class="section-kicker">chapter progress</p><h2>Chapter別の進み具合</h2></div><span class="page-count">' + bookStats.total + '語</span></div><div class="grid two-col">' + chapterCards + '</div></section>' +
       '<div class="summary-grid"><section class="card"><p class="card-title">連続日数</p><div class="summary-value"><strong>' + streakDays() + '</strong><span>日</span></div></section><section class="card"><p class="card-title">平均正答率</p><div class="summary-value"><strong>' + average + '</strong><span>%</span></div></section><section class="card"><p class="card-title">学習時間</p><div class="summary-value"><strong>' + minutes + '</strong><span>分</span></div></section></div>' +
       '<section class="history-list"><div class="section-head" style="padding:20px 16px 8px;margin:0"><h2>最近のセッション</h2><span class="page-count">local history</span></div>' +
       (state.history.length ? state.history.map(function (entry) {
         const date = new Intl.DateTimeFormat("ja-JP", { month: "short", day: "numeric" }).format(new Date(entry.date));
-        return '<div class="history-row"><span style="color:var(--teal-deep)">' + icon("calendar", 18) + '</span><div class="history-date"><strong>' + date + ' の練習</strong><span>' + entry.minutes + "分 · " + entry.total + '問クイズ</span></div><div class="history-score">' + entry.score + '<small>/' + entry.total + "</small></div></div>";
+         return '<div class="history-row"><span style="color:var(--teal-deep)">' + icon("calendar", 18) + '</span><div class="history-date"><strong>' + date + ' の練習</strong><span>' + entry.minutes + "分 · " + entry.total + "問クイズ</span></div><div class=\"history-score\">" + entry.score + '<small>/' + entry.total + "</small></div></div>";
       }).join("") : '<div class="empty" style="border:0;border-radius:0">まだ学習履歴がありません。</div>') + "</section>";
   }
 
@@ -776,7 +639,7 @@
       '<section class="data-panel rise"><div class="data-step"><span>STEP 1</span><strong>登録データを用意</strong></div><p class="card-note">写真からAIに単語データを作ってもらう場合は、下の形式のJSONにしてから貼り付けます。numberは教材と同じ通し番号（Chapter 1=1〜100、Chapter 2=101〜200、Chapter 3=201〜300、Chapter 4=301〜400）を使います。</p><details class="data-format"><summary>JSON形式を見る</summary><pre>' + escapeHtml(jsonExample) + '</pre></details></section>' +
       '<section class="data-panel rise"><div class="data-step"><span>STEP 2</span><strong>JSONを貼り付ける</strong></div><textarea id="word-json-input" class="data-textarea" placeholder="ここにJSONを貼り付けてください">' + escapeHtml(state.importText) + '</textarea><div class="data-actions"><button class="secondary-button" data-action="preview-import">プレビュー</button><label class="secondary-button file-button">JSONファイルを選択<input id="word-json-file" type="file" accept="application/json,.json" hidden></label></div></section>' +
       (state.importMessage ? '<div class="data-message">' + escapeHtml(state.importMessage).replace(/\n/g, "<br>") + '</div>' : '') +
-      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 既存（更新可能）' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><div class="data-actions" style="margin-top:12px"><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button>' + (draft.some(function (x) { return x._duplicate; }) ? '<button class="secondary-button" data-action="update-import">既存単語を更新する</button>' : '') + '</div></section>' : '') +
+      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 重複' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button></section>' : '') +
       '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。現在のテスト用20語はそのまま残ります。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
   }
 
@@ -791,7 +654,6 @@
     else if (route === "/history") content = historyPage();
     else if (route === "/data") content = dataPage();
     else if (/^\/word\/\d+$/.test(route)) content = detailPage(Number(route.split("/")[2]));
-    else if (/^\/edit\/\d+$/.test(route)) content = editPage(Number(route.split("/")[2]));
     else content = homePage();
     document.getElementById("app").innerHTML = shell(content);
     if (route === "/vocabulary") {
@@ -852,54 +714,6 @@
         state.quiz = null;
       }
       render();
-    } else if (action === "update-import") {
-      const rows = state.importDraft || [];
-      let updatedCount = 0;
-      const custom = Array.isArray(state.customWords) ? state.customWords.slice() : [];
-      rows.forEach(function (row) {
-        const index = custom.findIndex(function (item) {
-          return item.book === row.book && Number(item.number) === Number(row.number);
-        });
-        if (index < 0) return;
-        const old = custom[index];
-        custom[index] = Object.assign({}, row, { id: old.id });
-        updatedCount += 1;
-      });
-      state.customWords = custom;
-      save(KEYS.customWords, state.customWords);
-      state.importDraft = null;
-      state.importMessage = updatedCount + "語の既存データを更新しました。";
-      state.quiz = null;
-      render();
-    } else if (action === "cancel-edit") {
-      location.hash = "#/word/" + target.dataset.id;
-    } else if (action === "save-edit") {
-      const id = Number(target.dataset.id);
-      const index = (Array.isArray(state.customWords) ? state.customWords : []).findIndex(function (item) { return Number(item.id) === id; });
-      if (index < 0) return;
-      const wordInput = document.getElementById("edit-word");
-      const meaningInput = document.getElementById("edit-meaning");
-      const partInput = document.getElementById("edit-part");
-      const levelInput = document.getElementById("edit-level");
-      const exampleInput = document.getElementById("edit-example");
-      const translationInput = document.getElementById("edit-translation");
-      const updated = Object.assign({}, state.customWords[index], {
-        word: wordInput ? wordInput.value.trim() : state.customWords[index].word,
-        meaning: meaningInput ? meaningInput.value.trim() : state.customWords[index].meaning,
-        part: partInput ? partInput.value.trim() : state.customWords[index].part,
-        level: levelInput ? levelInput.value.trim() : state.customWords[index].level,
-        example: exampleInput ? exampleInput.value.trim() : state.customWords[index].example,
-        translation: translationInput ? translationInput.value.trim() : state.customWords[index].translation
-      });
-      if (!updated.word || !updated.meaning || !updated.example || !updated.translation) {
-        alert("英単語・意味・例文・例文の日本語訳は入力してください。");
-        return;
-      }
-      state.customWords[index] = updated;
-      save(KEYS.customWords, state.customWords);
-      state.quiz = null;
-      location.hash = "#/word/" + id;
-      render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);
       state.favorites = state.favorites.indexOf(id) >= 0 ? state.favorites.filter(function (item) { return item !== id; }) : state.favorites.concat(id);
@@ -915,6 +729,21 @@
       state.mastery[target.dataset.id] = target.dataset.value === "true";
       persist();
       render();
+    } else if (action === "weak-quiz") {
+      const count = Number(target.dataset.count);
+      const weak = weakWords();
+      if (!weak.length) {
+        window.alert("まだ苦手単語はありません。");
+        return;
+      }
+      if (QUIZ_COUNTS.indexOf(count) === -1) return;
+      state.quizScope = "wrong";
+      state.quizCount = count;
+      save(KEYS.quizScope, state.quizScope);
+      save(KEYS.quizCount, state.quizCount);
+      newQuiz();
+      window.location.hash = "#/quiz";
+      render();
     } else if (action === "answer") {
       if (!state.quiz || state.quiz.completed || state.quiz.isAnswered) return;
       const id = Number(target.dataset.id);
@@ -926,6 +755,13 @@
         state.quiz.score += 1;
         state.mastery[String(id)] = true;
         state.correct[String(id)] = (state.correct[String(id)] || 0) + 1;
+        // 正解するたびに苦手度を1段階下げ、0になったら苦手単語から外す。
+        const currentWrong = state.wrong[String(id)] || 0;
+        if (currentWrong > 1) {
+          state.wrong[String(id)] = currentWrong - 1;
+        } else if (currentWrong === 1) {
+          delete state.wrong[String(id)];
+        }
       } else {
         state.wrong[String(questionId)] = (state.wrong[String(questionId)] || 0) + 1;
       }
