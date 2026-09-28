@@ -17,7 +17,8 @@
     selectedChapter: "met-selected-chapter",
     quizMode: "met-quiz-mode",
     quizCount: "met-quiz-count",
-    quizScope: "met-quiz-scope"
+    quizScope: "met-quiz-scope",
+    customWords: "met-custom-words"
   };
   const DEFAULT_MASTERY = { "1": true, "2": true, "4": true, "5": true, "8": true, "9": true, "11": true, "14": true, "17": true, "18": true, "19": true };
   const DEFAULT_WRONG = { "3": 1, "7": 2, "12": 1, "16": 1 };
@@ -53,7 +54,11 @@
     search: "",
     filter: "all",
     mobileMenu: false,
-    quiz: null
+    quiz: null,
+    customWords: read(KEYS.customWords, []),
+    importDraft: null,
+    importMessage: "",
+    importText: ""
   };
 
   function read(key, fallback) {
@@ -75,6 +80,7 @@
     save(KEYS.wrong, state.wrong);
     save(KEYS.correct, state.correct);
     save(KEYS.history, state.history);
+    save(KEYS.customWords, state.customWords);
   }
 
   const BOOKS = [
@@ -95,9 +101,27 @@
     return state.selectedChapter === "all" ? "全Chapter" : "Chapter " + state.selectedChapter;
   }
 
+  function allWords() {
+    return WORDS.concat(Array.isArray(state.customWords) ? state.customWords : []);
+  }
+
+  function sortByNumber(list) {
+    return list.slice().sort(function (a, b) {
+      return (Number(a.number) || 999999) - (Number(b.number) || 999999);
+    });
+  }
+
+  function wordsByBook(book) {
+    return sortByNumber(allWords().filter(function (item) { return item.book === book; }));
+  }
+
+  function wordsByChapter(book, chapter) {
+    return sortByNumber(allWords().filter(function (item) { return item.book === book && item.chapter === chapter; }));
+  }
+
   function selectedWords() {
-    if (state.selectedChapter === "all") return window.filterWordsByBook(state.selectedBook);
-    return window.filterWordsByChapter(state.selectedBook, Number(state.selectedChapter));
+    if (state.selectedChapter === "all") return wordsByBook(state.selectedBook);
+    return wordsByChapter(state.selectedBook, Number(state.selectedChapter));
   }
 
   function selectedQuizMode() {
@@ -264,9 +288,9 @@
 
   function shell(content) {
     const route = currentRoute();
-    const menu = state.mobileMenu ? '<div class="mobile-menu">' + navLinks("mobile", route) + "</div>" : "";
+    const menu = state.mobileMenu ? '<div class="mobile-menu">' + navLinks("mobile", route) + '<a class="nav-link" href="#/data">' + icon("book", 17) + '<span>単語データ登録</span></a></div>' : "";
     return '<div class="app-shell">' +
-      '<aside class="sidebar"><a class="sidebar-brand" href="#/"><span class="brand-mark">m</span><span><span class="brand-name">My English</span><span class="brand-sub">trainer</span></span></a><p class="nav-label">学習メニュー</p><nav class="side-nav">' + navLinks("side", route) + '</nav><div class="streak-box"><div class="streak-title"><span>習慣</span><span>7 DAYS</span></div><div class="streak-number">' + streakDays() + '<small>日連続</small></div><div class="streak-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></aside>' +
+      '<aside class="sidebar"><a class="sidebar-brand" href="#/"><span class="brand-mark">m</span><span><span class="brand-name">My English</span><span class="brand-sub">trainer</span></span></a><p class="nav-label">学習メニュー</p><nav class="side-nav">' + navLinks("side", route) + '</nav><a class="data-nav-link" href="#/data">' + icon("book", 17) + '<span>単語データ登録</span></a><div class="streak-box"><div class="streak-title"><span>習慣</span><span>7 DAYS</span></div><div class="streak-number">' + streakDays() + '<small>日連続</small></div><div class="streak-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></aside>' +
       '<div class="main-column"><header class="topbar"><button class="menu-button" data-action="menu" aria-label="メニュー">☰</button><a class="study-selector" href="#/study"><span class="study-selector-book">' + selectedBookLabel() + '</span><span class="study-selector-chapter">' + selectedChapterLabel() + '</span></a><div class="desktop-message"><small>your small daily practice</small><strong>' + (route === "/" ? "焦らず、ひとつずつ。" : "今日も少しだけ、英語と向き合う。") + "</strong></div><a class=\"quick-button\" href=\"#/quiz\">" + icon("play", 14) + "5分クイズ</a></header>" + menu + '<main class="content">' + content + '</main><nav class="bottom-nav">' + bottomLinks(route) + "</nav></div></div>";
   }
 
@@ -278,7 +302,7 @@
     const learned = !!state.mastery[String(word.id)];
     const favorite = state.favorites.indexOf(word.id) >= 0;
     return '<div class="word-row ' + (learned ? "" : "unlearned") + '">' +
-      '<a class="word-link" href="#/word/' + word.id + '"><span class="word-number">' + String(word.id).padStart(2, "0") + '</span><span class="word-text"><strong>' + word.word + "</strong><span>" + word.meaning + "</span></span></a>" +
+      '<a class="word-link" href="#/word/' + word.id + '"><span class="word-number">' + String(Number(word.number) || 0).padStart(3, "0") + '</span><span class="word-text"><strong>' + word.word + "</strong><span>" + word.meaning + "</span></span></a>" +
       '<button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="' + word.word + 'をお気に入り">' + icon("star", 17) + "</button>" +
       '<span class="status ' + (learned ? "" : "unlearned") + '">' + (learned ? "習得済み" : "未学習") + "</span></div>";
   }
@@ -296,13 +320,13 @@
   function studyPage() {
     const currentWords = selectedWords();
     const counts = [1, 2, 3, 4].map(function (chapter) {
-      return window.filterWordsByChapter(state.selectedBook, chapter).length;
+      return wordsByChapter(state.selectedBook, chapter).length;
     });
     return pageHead("choose your study set", "教材・Chapter", "勉強したい教材とChapterを選んでください。選んだ範囲が単語帳とクイズの対象になります。", currentWords.length + " words") +
       '<section class="study-panel rise"><div class="study-panel-head"><div><p class="card-title">教材</p><p class="card-note">現在はDistinction 1〜6に対応しています。</p></div></div><div class="study-book-grid">' +
       BOOKS.map(function (book) {
         const active = state.selectedBook === book.id;
-        const count = window.filterWordsByBook(book.id).length;
+        const count = wordsByBook(book.id).length;
         return '<button class="study-book-button ' + (active ? "active" : "") + '" data-action="select-book" data-book="' + book.id + '"><strong>' + book.label + '</strong><span>' + count + '語登録済み</span></button>';
       }).join("") +
       '</div></section>' +
@@ -345,7 +369,7 @@
   }
 
   function detailPage(id) {
-    const word = WORDS.find(function (item) { return item.id === id; }) || WORDS[0];
+    const word = allWords().find(function (item) { return item.id === id; }) || allWords()[0];
     const learned = !!state.mastery[String(word.id)];
     const favorite = state.favorites.indexOf(word.id) >= 0;
     return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + word.level + " · " + word.part + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + word.word + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + word.meaning + "</p></section>" +
@@ -357,7 +381,7 @@
   }
 
   function makeChoices(correct, pool) {
-    const source = pool && pool.length ? pool : WORDS;
+    const source = pool && pool.length ? pool : allWords();
     return shuffle([correct].concat(shuffle(source.filter(function (word) {
       return word.id !== correct.id;
     })).slice(0, 3)));
@@ -519,6 +543,75 @@
     window.speechSynthesis.speak(utterance);
   }
 
+  function normalizeImportedWords(raw) {
+    if (!Array.isArray(raw)) throw new Error("JSONは単語オブジェクトの配列にしてください。");
+    const validBooks = BOOKS.map(function (book) { return book.id; });
+    const result = [];
+    const errors = [];
+    raw.forEach(function (item, index) {
+      const row = item || {};
+      const rowNo = index + 1;
+      const book = String(row.book || "").trim();
+      const chapter = Number(row.chapter);
+      const number = Number(row.number);
+      const word = String(row.word || "").trim();
+      const meaning = String(row.meaning || "").trim();
+      const example = String(row.example || "").trim();
+      const translation = String(row.translation || "").trim();
+      if (validBooks.indexOf(book) === -1) errors.push(rowNo + "行目: bookが不正です。");
+      if ([1,2,3,4].indexOf(chapter) === -1) errors.push(rowNo + "行目: chapterは1〜4にしてください。");
+      if (!Number.isInteger(number) || number < 1 || number > 400) errors.push(rowNo + "行目: numberは1〜400の整数にしてください。");
+      if ([1,2,3,4].indexOf(chapter) >= 0 && Number.isInteger(number)) {
+        const min = (chapter - 1) * 100 + 1;
+        const max = chapter * 100;
+        if (number < min || number > max) errors.push(rowNo + "行目: Chapter " + chapter + " のnumberは" + min + "〜" + max + "にしてください。");
+      }
+      if (!word) errors.push(rowNo + "行目: wordがありません。");
+      if (!meaning) errors.push(rowNo + "行目: meaningがありません。");
+      if (!example) errors.push(rowNo + "行目: exampleがありません。");
+      if (!translation) errors.push(rowNo + "行目: translationがありません。");
+      if (errors.length && errors[errors.length - 1].indexOf(rowNo + "行目") === 0) return;
+      result.push({
+        book: book, chapter: chapter, number: number,
+        word: word, meaning: meaning, part: String(row.part || "").trim() || "未設定",
+        level: String(row.level || "").trim() || "未設定", example: example, translation: translation
+      });
+    });
+    if (errors.length) throw new Error(errors.slice(0, 8).join("\n") + (errors.length > 8 ? "\n…ほかにもエラーがあります。" : ""));
+    return result;
+  }
+
+  function nextWordId() {
+    return allWords().reduce(function (max, word) { return Math.max(max, Number(word.id) || 0); }, 0) + 1;
+  }
+
+  function prepareImportedWords(rows) {
+    let nextId = nextWordId();
+    return rows.map(function (row, rowIndex) {
+      const same = allWords().some(function (word) {
+        return word.book === row.book && Number(word.number) === Number(row.number);
+      });
+      if (same) return Object.assign({}, row, { _duplicate: true });
+      const sameNew = rows.slice(0, rowIndex).some(function (x) {
+        return x.book === row.book && Number(x.number) === Number(row.number);
+      });
+      if (sameNew) return Object.assign({}, row, { _duplicate: true });
+      return Object.assign({}, row, { id: nextId++, _duplicate: false });
+    });
+  }
+
+  function dataPage() {
+    const draft = state.importDraft;
+    const customCount = Array.isArray(state.customWords) ? state.customWords.length : 0;
+    const jsonExample = '[\n  {\n    "book": "distinction1",\n    "chapter": 1,\n    "number": 1,\n    "word": "example",\n    "meaning": "例",\n    "part": "名詞",\n    "level": "中級",\n    "example": "This is an example.",\n    "translation": "これは例です。"\n  }\n]';
+    return pageHead("vocabulary data", "単語データ登録", "AIなどで作成した登録データを確認して、このアプリに追加できます。番号は教材と同じ1〜400を登録します。", customCount + "語追加済み") +
+      '<section class="data-panel rise"><div class="data-step"><span>STEP 1</span><strong>登録データを用意</strong></div><p class="card-note">写真からAIに単語データを作ってもらう場合は、下の形式のJSONにしてから貼り付けます。numberは教材と同じ通し番号（Chapter 1=1〜100、Chapter 2=101〜200、Chapter 3=201〜300、Chapter 4=301〜400）を使います。</p><details class="data-format"><summary>JSON形式を見る</summary><pre>' + escapeHtml(jsonExample) + '</pre></details></section>' +
+      '<section class="data-panel rise"><div class="data-step"><span>STEP 2</span><strong>JSONを貼り付ける</strong></div><textarea id="word-json-input" class="data-textarea" placeholder="ここにJSONを貼り付けてください">' + escapeHtml(state.importText) + '</textarea><div class="data-actions"><button class="secondary-button" data-action="preview-import">プレビュー</button><label class="secondary-button file-button">JSONファイルを選択<input id="word-json-file" type="file" accept="application/json,.json" hidden></label></div></section>' +
+      (state.importMessage ? '<div class="data-message">' + escapeHtml(state.importMessage).replace(/\n/g, "<br>") + '</div>' : '') +
+      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 重複' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button></section>' : '') +
+      '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。現在のテスト用20語はそのまま残ります。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
+  }
+
   function render() {
     const route = currentRoute();
     let content;
@@ -528,6 +621,7 @@
     else if (route === "/quiz") content = quizPage();
     else if (route === "/weak") content = weakPage();
     else if (route === "/history") content = historyPage();
+    else if (route === "/data") content = dataPage();
     else if (/^\/word\/\d+$/.test(route)) content = detailPage(Number(route.split("/")[2]));
     else content = homePage();
     document.getElementById("app").innerHTML = shell(content);
@@ -561,6 +655,34 @@
     } else if (action === "select-quiz-count") {
       setQuizCount(target.dataset.count);
       render();
+    } else if (action === "preview-import") {
+      const input = document.getElementById("word-json-input");
+      state.importText = input ? input.value : state.importText;
+      try {
+        const rows = normalizeImportedWords(JSON.parse(state.importText || ""));
+        state.importDraft = prepareImportedWords(rows);
+        state.importMessage = "プレビューを作成しました。内容を確認して登録してください。";
+      } catch (error) {
+        state.importDraft = null;
+        state.importMessage = "読み込みできませんでした。\n" + error.message;
+      }
+      render();
+    } else if (action === "confirm-import") {
+      const additions = (state.importDraft || []).filter(function (row) { return !row._duplicate; }).map(function (row) {
+        const copy = Object.assign({}, row);
+        delete copy._duplicate;
+        return copy;
+      });
+      if (!additions.length) {
+        state.importMessage = "新しく登録できる単語がありません。";
+      } else {
+        state.customWords = state.customWords.concat(additions);
+        save(KEYS.customWords, state.customWords);
+        state.importDraft = null;
+        state.importMessage = additions.length + "語を登録しました。";
+        state.quiz = null;
+      }
+      render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);
       state.favorites = state.favorites.indexOf(id) >= 0 ? state.favorites.filter(function (item) { return item !== id; }) : state.favorites.concat(id);
@@ -570,7 +692,7 @@
       state.filter = target.dataset.filter;
       render();
     } else if (action === "speak") {
-      const word = WORDS.find(function (item) { return item.id === Number(target.dataset.id); });
+      const word = allWords().find(function (item) { return item.id === Number(target.dataset.id); });
       if (word) speak(word);
     } else if (action === "mastery") {
       state.mastery[target.dataset.id] = target.dataset.value === "true";
@@ -614,7 +736,24 @@
     if (event.target.id === "word-search") {
       state.search = event.target.value;
       render();
+    } else if (event.target.id === "word-json-input") {
+      state.importText = event.target.value;
     }
+  });
+
+  document.addEventListener("change", function (event) {
+    if (event.target.id !== "word-json-file") return;
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function () {
+      let textarea = document.getElementById("word-json-input");
+      state.importText = String(reader.result || "");
+      if (textarea) textarea.value = state.importText;
+      state.importMessage = "JSONファイルを読み込みました。「プレビュー」を押してください。";
+      render();
+    };
+    reader.readAsText(file);
   });
 
   window.addEventListener("hashchange", function () {
