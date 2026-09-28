@@ -115,10 +115,28 @@
 
   function setQuizScope(scopeId) {
     const scope = QUIZ_SCOPES.find(function (item) { return item.id === scopeId; });
-    if (!scope) return;
+    if (!scope) return false;
+
+    // 「未習得のみ」「間違えた単語」が0件の場合は、
+    // 出題範囲を変更せず、アラートだけ表示する。
+    if (scope.id === "unlearned" || scope.id === "wrong") {
+      const base = selectedWords();
+      const availableCount = scope.id === "unlearned"
+        ? base.filter(function (word) { return !state.mastery[String(word.id)]; }).length
+        : base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; }).length;
+
+      if (availableCount === 0) {
+        window.alert(scope.id === "unlearned"
+          ? "未習得の単語がありません。\n「すべて」など別の出題範囲を選択してください。"
+          : "間違えた単語がありません。\n「すべて」など別の出題範囲を選択してください。");
+        return false;
+      }
+    }
+
     state.quizScope = scope.id;
     save(KEYS.quizScope, state.quizScope);
     state.quiz = null;
+    return true;
   }
 
   function quizPool() {
@@ -539,8 +557,7 @@
       setQuizMode(target.dataset.mode);
       render();
     } else if (action === "select-quiz-scope") {
-      setQuizScope(target.dataset.scope);
-      render();
+      if (setQuizScope(target.dataset.scope)) render();
     } else if (action === "select-quiz-count") {
       setQuizCount(target.dataset.count);
       render();
