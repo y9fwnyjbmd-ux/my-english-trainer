@@ -489,8 +489,8 @@
       const t = token.trim();
       if (!t) return "";
       if (/^sb$/i.test(t)) return "(?:me|you|him|her|us|them|someone|the\\s+[A-Za-z]+)";
-      if (/^sth$/i.test(t)) return "(?:it|this|that|something|the\\s+[A-Za-z]+(?:\\s+[A-Za-z]+){0,2})";
-      if (/^sb's$/i.test(t)) return "(?:my|your|his|her|our|their|someone's|the\\s+[A-Za-z]+(?:'s))";
+      if (/^sth$/i.test(t)) return "(?:it|this|that|something|anything|nothing|one|some|any|a|an|the|my|your|his|her|our|their|its|[A-Za-z]+(?:\s+[A-Za-z]+){0,4})";
+      if (/^sb's$/i.test(t)) return "(?:my|your|his|her|our|their|someone's|[A-Za-z]+(?:'s))";
       if (/^one's$/i.test(t)) return "(?:my|your|his|her|our|their)";
       if (/^\(sb\)$/i.test(t)) return "(?:me|you|him|her|us|them|someone)";
       if (/^\(that\)$/i.test(t)) return "(?:that)?";
@@ -536,7 +536,29 @@
     }
 
     const fallback = new RegExp(esc(target), "i");
-    return fallback.test(source) ? source.replace(fallback, "□□□□") : "□□□□";
+    if (fallback.test(source)) return source.replace(fallback, "□□□□");
+
+    // 最終フォールバック：完全一致しなくても、実際の例文を残したまま
+    // 対象表現の主要語を隠します。これにより「□□□□」だけになることを防ぎます。
+    const literalWords = normalized.split(/\s+/).filter(function (token) {
+      return token && !/^(?:sb|sth|one's|sb's|sth\/sb|\(sb\)|\(that\))$/i.test(token);
+    });
+    if (literalWords.length) {
+      let fallbackSource = source;
+      let replaced = false;
+      literalWords.slice().sort(function (a, b) { return b.length - a.length; }).forEach(function (token) {
+        if (replaced) return;
+        const wordPattern = new RegExp("\\b" + esc(token) + "(?:s|es|ed|d|ing)?\\b", "i");
+        if (wordPattern.test(fallbackSource)) {
+          fallbackSource = fallbackSource.replace(wordPattern, "□□□□");
+          replaced = true;
+        }
+      });
+      if (replaced) return fallbackSource;
+    }
+
+    // それでも見つからない場合も、例文そのものは表示する。
+    return source || "□□□□";
   }
 
   function quizResultPage(quiz) {
