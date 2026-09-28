@@ -15,7 +15,8 @@
     history: "met-history",
     selectedBook: "met-selected-book",
     selectedChapter: "met-selected-chapter",
-    quizMode: "met-quiz-mode"
+    quizMode: "met-quiz-mode",
+    quizCount: "met-quiz-count"
   };
   const DEFAULT_MASTERY = { "1": true, "2": true, "4": true, "5": true, "8": true, "9": true, "11": true, "14": true, "17": true, "18": true, "19": true };
   const DEFAULT_WRONG = { "3": 1, "7": 2, "12": 1, "16": 1 };
@@ -24,7 +25,7 @@
     { id: "seed-2", date: "2024-06-12", score: 6, total: 8, minutes: 7 },
     { id: "seed-3", date: "2024-06-10", score: 7, total: 10, minutes: 11 }
   ];
-  const QUIZ_TOTAL = 20;
+  const QUIZ_COUNTS = [10, 20, 30, 50];
   const QUIZ_MODES = [
     { id: "en-ja", label: "英語 → 日本語", description: "英単語を見て、日本語の意味を4択から選ぶ", status: "利用可能" },
     { id: "ja-en", label: "日本語 → 英語", description: "日本語の意味を見て、英単語を4択から選ぶ", status: "利用可能" },
@@ -41,6 +42,7 @@
     selectedBook: read(KEYS.selectedBook, "distinction1"),
     selectedChapter: read(KEYS.selectedChapter, "all"),
     quizMode: read(KEYS.quizMode, "multiple-choice"),
+    quizCount: read(KEYS.quizCount, 20),
     search: "",
     filter: "all",
     mobileMenu: false,
@@ -104,6 +106,14 @@
     state.quiz = null;
   }
 
+  function setQuizCount(count) {
+    const value = Number(count);
+    if (QUIZ_COUNTS.indexOf(value) === -1) return;
+    state.quizCount = value;
+    save(KEYS.quizCount, state.quizCount);
+    state.quiz = null;
+  }
+
   function getSelectedBook() {
     return state.selectedBook;
   }
@@ -140,6 +150,12 @@
   if (!QUIZ_MODES.some(function (mode) { return mode.id === state.quizMode; })) {
     state.quizMode = "multiple-choice";
     save(KEYS.quizMode, state.quizMode);
+  }
+  if (QUIZ_COUNTS.indexOf(Number(state.quizCount)) === -1) {
+    state.quizCount = 20;
+    save(KEYS.quizCount, state.quizCount);
+  } else {
+    state.quizCount = Number(state.quizCount);
   }
 
   function icon(name, size) {
@@ -297,7 +313,7 @@
 
   function newQuiz() {
     const pool = selectedWords();
-    const total = Math.min(QUIZ_TOTAL, pool.length);
+    const total = Math.min(state.quizCount, pool.length);
     if (!total) {
       state.quiz = null;
       return;
@@ -316,6 +332,7 @@
       historySaved: false,
       completed: false,
       mode: mode,
+      requestedTotal: state.quizCount,
       book: state.selectedBook,
       chapter: state.selectedChapter
     };
@@ -343,6 +360,13 @@
       const available = mode.id === "multiple-choice" || mode.id === "en-ja" || mode.id === "ja-en" || mode.id === "example-word";
       return '<button class="quiz-mode-button ' + (active ? "active" : "") + (!available ? " disabled" : "") + '" data-action="select-quiz-mode" data-mode="' + mode.id + '" ' + (!available ? 'aria-disabled="true"' : "") + '><span class="quiz-mode-title">' + mode.label + '</span><span class="quiz-mode-description">' + mode.description + '</span><span class="quiz-mode-status">' + (available ? (active ? "選択中" : "選択する") : mode.status) + '</span></button>';
     }).join("") + '</div></section>';
+  }
+
+  function quizCountSelector() {
+    return '<section class="quiz-count-panel rise"><div class="quiz-mode-head"><div><p class="card-title">問題数</p><p class="card-note">問題数を変更すると、新しいクイズが始まります。</p></div><span class="badge">現在：' + state.quizCount + '問</span></div><div class="quiz-count-grid">' + QUIZ_COUNTS.map(function (count) {
+      const active = state.quizCount === count;
+      return '<button class="quiz-count-button ' + (active ? "active" : "") + '" data-action="select-quiz-count" data-count="' + count + '"><strong>' + count + '</strong><span>問</span></button>';
+    }).join("") + '</div>' + (selectedWords().length < state.quizCount ? '<p class="quiz-count-note">現在の学習対象は ' + selectedWords().length + '語なので、実際の出題数は ' + selectedWords().length + '問になります。</p>' : '') + '</section>';
   }
 
   function maskExampleSentence(example, answerWord) {
@@ -387,8 +411,8 @@
     const questionClass = isExampleToWord ? "question-word question-example" : "question-word";
     const questionHint = isExampleToWord ? "例文の意味を考えて、単語を選んでください" : (isJapaneseToEnglish ? "英単語を選んでください" : "音声で発音を確認");
     const speakIcon = isExampleToWord ? icon("speaker", 20) : (isJapaneseToEnglish ? "" : icon("speaker", 20));
-    return pageHead("a tiny daily challenge", "20問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · " + selectedQuizMode().label + "で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
-      quizModeSelector() +
+    return pageHead("a tiny daily challenge", quiz.total + "問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · " + selectedQuizMode().label + "で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
+      quizModeSelector() + quizCountSelector() +
       '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + quiz.total + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">' + questionLabel + '</p><button class="' + questionClass + '" data-action="speak" data-id="' + question.id + '">' + questionDisplay + speakIcon + '</button><p class="question-pronunciation">' + questionHint + '</p><div class="choices">' + current.choices.map(function (choice, index) {
         const correct = answered && choice.id === question.id;
         const wrong = answered && quiz.selectedAnswer === choice.id && !correct;
@@ -469,6 +493,9 @@
       render();
     } else if (action === "select-quiz-mode") {
       setQuizMode(target.dataset.mode);
+      render();
+    } else if (action === "select-quiz-count") {
+      setQuizCount(target.dataset.count);
       render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);

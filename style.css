@@ -402,3 +402,49 @@ h2 { margin-bottom: 6px; font-size: 21px; line-height: 1.2; letter-spacing: -.04
 @media (min-width: 700px) {
   .quiz-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* STEP 3-5: quiz question count selector */
+.quiz-count-panel {
+  max-width: 820px;
+  margin: 0 auto 22px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255,254,250,.74);
+}
+.quiz-count-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.quiz-count-button {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  min-height: 54px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(247,245,239,.45);
+  color: var(--ink);
+}
+.quiz-count-button:hover {
+  border-color: rgba(49,93,85,.42);
+  transform: translateY(-1px);
+}
+.quiz-count-button.active {
+  border-color: var(--teal);
+  background: var(--teal-pale);
+  color: var(--teal-deep);
+}
+.quiz-count-button strong { font-size: 17px; }
+.quiz-count-button span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.quiz-count-note {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+@media (max-width: 420px) {
+  .quiz-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

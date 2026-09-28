@@ -1,4 +1,4 @@
-const CACHE_NAME = "my-english-trainer-static-v8";
+const CACHE_NAME = "my-english-trainer-static-v9";
 const CACHE_PREFIX = "my-english-trainer-static-";
 const APP_SHELL = ["./", "./index.html", "./style.css", "./app.js", "./words.js", "./manifest.json"];
 
