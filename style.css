@@ -399,3 +399,18 @@ h2 { margin-bottom: 6px; font-size: 21px; line-height: 1.2; letter-spacing: -.04
 @media (min-width: 700px) {
   .quiz-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* STEP 3-4: example sentence question */
+.question-example {
+  margin: 18px auto 0;
+  max-width: 680px;
+  padding: 24px 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(247,245,239,.55);
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.65;
+  font-weight: 800;
+  text-align: left;
+}
