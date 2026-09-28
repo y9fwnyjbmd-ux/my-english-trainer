@@ -586,15 +586,77 @@
       (weak.length ? '<div class="word-grid">' + weak.map(wordRow).join("") + "</div>" : '<div class="empty"><strong>復習する単語はありません</strong><p>いいペースです。新しい単語にも挑戦してみましょう。</p></div>');
   }
 
+  function progressWordsForBook(bookId) {
+    // 同じ book + number が初期テスト語と追加語の両方に存在する場合は、
+    // ユーザーが登録・編集した customWords を優先して1語として数えます。
+    const custom = Array.isArray(state.customWords) ? state.customWords : [];
+    const customKeys = {};
+    custom.forEach(function (word) {
+      if (word.book === bookId) customKeys[word.book + "::" + Number(word.number)] = true;
+    });
+    return allWords().filter(function (word) {
+      if (word.book !== bookId) return false;
+      const key = word.book + "::" + Number(word.number);
+      if (customKeys[key]) {
+        return custom.some(function (item) {
+          return item.book === word.book && Number(item.number) === Number(word.number) && Number(item.id) === Number(word.id);
+        });
+      }
+      return true;
+    });
+  }
+
+  function progressStats(words) {
+    const stats = { total: words.length, learned: 0, weak: 0, studying: 0, unlearned: 0 };
+    words.forEach(function (word) {
+      const id = String(word.id);
+      if (state.mastery[id]) {
+        stats.learned += 1;
+      } else if ((state.wrong[id] || 0) > 0) {
+        stats.weak += 1;
+      } else if ((state.correct[id] || 0) > 0) {
+        stats.studying += 1;
+      } else {
+        stats.unlearned += 1;
+      }
+    });
+    stats.rate = stats.total ? Math.round(stats.learned / stats.total * 100) : 0;
+    return stats;
+  }
+
+  function progressStatusCard(label, value, total, className, note) {
+    const rate = total ? Math.round(value / total * 100) : 0;
+    return '<div class="card progress-status-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="display:flex;align-items:center;gap:8px"><span class="progress-dot ' + className + '" style="width:9px;height:9px;border-radius:50%;background:var(--teal);display:inline-block"></span><strong>' + label + '</strong></div><strong>' + value + '語</strong></div><div class="progress-track" style="margin-top:12px"><i style="width:' + rate + '%"></i></div><small style="display:block;margin-top:8px">' + note + '</small></div>';
+  }
+
+  function chapterProgressCard(chapter, words) {
+    const stats = progressStats(words);
+    return '<section class="card chapter-progress-card"><div class="card-head"><div><p class="card-title">Chapter ' + chapter + '</p><p class="card-note">' + stats.learned + ' / ' + stats.total + '語を修得済み</p></div><strong style="font-size:24px;color:var(--teal-deep)">' + stats.rate + '%</strong></div><div class="progress-track"><i style="width:' + stats.rate + '%"></i></div><div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:12px;font-size:12px;color:var(--text-muted)"><span>修得 ' + stats.learned + '</span><span>学習中 ' + stats.studying + '</span><span>苦手 ' + stats.weak + '</span><span>未学習 ' + stats.unlearned + '</span></div></section>';
+  }
+
   function historyPage() {
     const average = state.history.length ? Math.round(state.history.reduce(function (sum, item) { return sum + item.score / item.total; }, 0) / state.history.length * 100) : 0;
     const minutes = state.history.reduce(function (sum, item) { return sum + item.minutes; }, 0);
+    const bookWords = progressWordsForBook(state.selectedBook);
+    const bookStats = progressStats(bookWords);
+    const chapterCards = [1, 2, 3, 4].map(function (chapter) {
+      return chapterProgressCard(chapter, bookWords.filter(function (word) { return Number(word.chapter) === chapter; }));
+    }).join('');
+
     return pageHead("your learning trail", "学習の記録", "積み重ねは、あとから見るとちゃんと道になっています。") +
+      '<section class="card rise"><div class="card-head"><div><p class="eyebrow">' + escapeHtml(selectedBookLabel()) + '</p><h2>単語の進み具合</h2><p class="card-note">「覚えた」にした単語を修得済みとして集計しています。</p></div><div style="display:flex;align-items:baseline;gap:2px"><strong style="font-size:42px;color:var(--teal-deep);line-height:1">' + bookStats.rate + '</strong><span>%</span></div></div><div class="progress-track" style="height:12px"><i style="width:' + bookStats.rate + '%"></i></div><div style="margin-top:12px"><strong style="font-size:24px">' + bookStats.learned + '</strong><span> / ' + bookStats.total + '語</span></div></section>' +
+      '<div class="grid two-col">' +
+        progressStatusCard('修得済み', bookStats.learned, bookStats.total, 'learned', '「覚えた」にした単語') +
+        progressStatusCard('学習中', bookStats.studying, bookStats.total, 'studying', '正解経験はあるが未修得の単語') +
+        progressStatusCard('苦手', bookStats.weak, bookStats.total, 'weak', 'クイズで間違えた未修得単語') +
+        progressStatusCard('未学習', bookStats.unlearned, bookStats.total, 'unlearned', 'まだ学習記録がない単語') +
+      '</div>' +
+      '<section class="section rise"><div class="section-head"><div><p class="section-kicker">chapter progress</p><h2>Chapter別の進み具合</h2></div><span class="page-count">' + bookStats.total + '語</span></div><div class="grid two-col">' + chapterCards + '</div></section>' +
       '<div class="summary-grid"><section class="card"><p class="card-title">連続日数</p><div class="summary-value"><strong>' + streakDays() + '</strong><span>日</span></div></section><section class="card"><p class="card-title">平均正答率</p><div class="summary-value"><strong>' + average + '</strong><span>%</span></div></section><section class="card"><p class="card-title">学習時間</p><div class="summary-value"><strong>' + minutes + '</strong><span>分</span></div></section></div>' +
       '<section class="history-list"><div class="section-head" style="padding:20px 16px 8px;margin:0"><h2>最近のセッション</h2><span class="page-count">local history</span></div>' +
       (state.history.length ? state.history.map(function (entry) {
         const date = new Intl.DateTimeFormat("ja-JP", { month: "short", day: "numeric" }).format(new Date(entry.date));
-         return '<div class="history-row"><span style="color:var(--teal-deep)">' + icon("calendar", 18) + '</span><div class="history-date"><strong>' + date + ' の練習</strong><span>' + entry.minutes + "分 · " + entry.total + "問クイズ</span></div><div class=\"history-score\">" + entry.score + '<small>/' + entry.total + "</small></div></div>";
+        return '<div class="history-row"><span style="color:var(--teal-deep)">' + icon("calendar", 18) + '</span><div class="history-date"><strong>' + date + ' の練習</strong><span>' + entry.minutes + "分 · " + entry.total + '問クイズ</span></div><div class="history-score">' + entry.score + '<small>/' + entry.total + "</small></div></div>";
       }).join("") : '<div class="empty" style="border:0;border-radius:0">まだ学習履歴がありません。</div>') + "</section>";
   }
 
