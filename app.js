@@ -16,7 +16,8 @@
     selectedBook: "met-selected-book",
     selectedChapter: "met-selected-chapter",
     quizMode: "met-quiz-mode",
-    quizCount: "met-quiz-count"
+    quizCount: "met-quiz-count",
+    quizScope: "met-quiz-scope"
   };
   const DEFAULT_MASTERY = { "1": true, "2": true, "4": true, "5": true, "8": true, "9": true, "11": true, "14": true, "17": true, "18": true, "19": true };
   const DEFAULT_WRONG = { "3": 1, "7": 2, "12": 1, "16": 1 };
@@ -26,6 +27,11 @@
     { id: "seed-3", date: "2024-06-10", score: 7, total: 10, minutes: 11 }
   ];
   const QUIZ_COUNTS = [10, 20, 30, 50];
+  const QUIZ_SCOPES = [
+    { id: "all", label: "すべて", description: "選択した教材・Chapterの全単語から出題" },
+    { id: "unlearned", label: "未習得のみ", description: "まだ「覚えた」にしていない単語から出題" },
+    { id: "wrong", label: "間違えた単語", description: "これまでにクイズで間違えた単語から出題" }
+  ];
   const QUIZ_MODES = [
     { id: "en-ja", label: "英語 → 日本語", description: "英単語を見て、日本語の意味を4択から選ぶ", status: "利用可能" },
     { id: "ja-en", label: "日本語 → 英語", description: "日本語の意味を見て、英単語を4択から選ぶ", status: "利用可能" },
@@ -43,6 +49,7 @@
     selectedChapter: read(KEYS.selectedChapter, "all"),
     quizMode: read(KEYS.quizMode, "multiple-choice"),
     quizCount: read(KEYS.quizCount, 20),
+    quizScope: read(KEYS.quizScope, "all"),
     search: "",
     filter: "all",
     mobileMenu: false,
@@ -106,6 +113,29 @@
     state.quiz = null;
   }
 
+  function setQuizScope(scopeId) {
+    const scope = QUIZ_SCOPES.find(function (item) { return item.id === scopeId; });
+    if (!scope) return;
+    state.quizScope = scope.id;
+    save(KEYS.quizScope, state.quizScope);
+    state.quiz = null;
+  }
+
+  function quizPool() {
+    const base = selectedWords();
+    if (state.quizScope === "unlearned") {
+      return base.filter(function (word) { return !state.mastery[String(word.id)]; });
+    }
+    if (state.quizScope === "wrong") {
+      return base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; });
+    }
+    return base;
+  }
+
+  function selectedQuizScope() {
+    return QUIZ_SCOPES.find(function (scope) { return scope.id === state.quizScope; }) || QUIZ_SCOPES[0];
+  }
+
   function setQuizCount(count) {
     const value = Number(count);
     if (QUIZ_COUNTS.indexOf(value) === -1) return;
@@ -150,6 +180,10 @@
   if (!QUIZ_MODES.some(function (mode) { return mode.id === state.quizMode; })) {
     state.quizMode = "multiple-choice";
     save(KEYS.quizMode, state.quizMode);
+  }
+  if (!QUIZ_SCOPES.some(function (scope) { return scope.id === state.quizScope; })) {
+    state.quizScope = "all";
+    save(KEYS.quizScope, state.quizScope);
   }
   if (QUIZ_COUNTS.indexOf(Number(state.quizCount)) === -1) {
     state.quizCount = 20;
@@ -312,7 +346,8 @@
   }
 
   function newQuiz() {
-    const pool = selectedWords();
+    const pool = quizPool();
+    const choicePool = selectedWords();
     const total = Math.min(state.quizCount, pool.length);
     if (!total) {
       state.quiz = null;
@@ -320,7 +355,7 @@
     }
     const mode = state.quizMode;
     const quizQuestions = shuffle(pool).slice(0, total).map(function (word) {
-      return { question: word, choices: makeChoices(word, pool) };
+      return { question: word, choices: makeChoices(word, choicePool) };
     });
     state.quiz = {
       quizQuestions: quizQuestions,
@@ -334,7 +369,8 @@
       mode: mode,
       requestedTotal: state.quizCount,
       book: state.selectedBook,
-      chapter: state.selectedChapter
+      chapter: state.selectedChapter,
+      scope: state.quizScope
     };
   }
 
@@ -360,6 +396,14 @@
       const available = mode.id === "multiple-choice" || mode.id === "en-ja" || mode.id === "ja-en" || mode.id === "example-word";
       return '<button class="quiz-mode-button ' + (active ? "active" : "") + (!available ? " disabled" : "") + '" data-action="select-quiz-mode" data-mode="' + mode.id + '" ' + (!available ? 'aria-disabled="true"' : "") + '><span class="quiz-mode-title">' + mode.label + '</span><span class="quiz-mode-description">' + mode.description + '</span><span class="quiz-mode-status">' + (available ? (active ? "選択中" : "選択する") : mode.status) + '</span></button>';
     }).join("") + '</div></section>';
+  }
+
+  function quizScopeSelector() {
+    const currentScope = selectedQuizScope();
+    return '<section class="quiz-scope-panel rise"><div class="quiz-mode-head"><div><p class="card-title">出題範囲</p><p class="card-note">どの単語をクイズに出すか選べます。</p></div><span class="badge">現在：' + currentScope.label + '</span></div><div class="quiz-scope-grid">' + QUIZ_SCOPES.map(function (scope) {
+      const active = state.quizScope === scope.id;
+      return '<button class="quiz-scope-button ' + (active ? "active" : "") + '" data-action="select-quiz-scope" data-scope="' + scope.id + '"><span class="quiz-scope-title">' + scope.label + '</span><span class="quiz-scope-description">' + scope.description + '</span><span class="quiz-mode-status">' + (active ? "選択中" : "選択する") + '</span></button>';
+    }).join("") + '</div>' + (quizPool().length === 0 ? '<p class="quiz-count-note">この出題範囲には対象単語がありません。別の出題範囲を選んでください。</p>' : (quizPool().length < state.quizCount ? '<p class="quiz-count-note">この出題範囲は ' + quizPool().length + '語なので、実際の出題数は ' + quizPool().length + '問になります。</p>' : '')) + '</section>';
   }
 
   function quizCountSelector() {
@@ -412,7 +456,7 @@
     const questionHint = isExampleToWord ? "例文の意味を考えて、単語を選んでください" : (isJapaneseToEnglish ? "英単語を選んでください" : "音声で発音を確認");
     const speakIcon = isExampleToWord ? icon("speaker", 20) : (isJapaneseToEnglish ? "" : icon("speaker", 20));
     return pageHead("a tiny daily challenge", quiz.total + "問クイズ", selectedBookLabel() + " · " + selectedChapterLabel() + " · " + selectedQuizMode().label + "で出題します。", icon("trophy", 13) + " " + quiz.score + " correct") +
-      quizModeSelector() + quizCountSelector() +
+      quizModeSelector() + quizScopeSelector() + quizCountSelector() +
       '<div class="quiz-wrap"><div class="quiz-meta"><span>Question ' + questionNumber + " / " + quiz.total + "</span><span>" + (answered ? Math.round(quiz.score / questionNumber * 100) + "%" : "準備はできていますか？") + '</span></div><div class="quiz-progress"><i style="width:' + progress + '%"></i></div><section class="quiz-card rise"><p class="question-label">' + questionLabel + '</p><button class="' + questionClass + '" data-action="speak" data-id="' + question.id + '">' + questionDisplay + speakIcon + '</button><p class="question-pronunciation">' + questionHint + '</p><div class="choices">' + current.choices.map(function (choice, index) {
         const correct = answered && choice.id === question.id;
         const wrong = answered && quiz.selectedAnswer === choice.id && !correct;
@@ -493,6 +537,9 @@
       render();
     } else if (action === "select-quiz-mode") {
       setQuizMode(target.dataset.mode);
+      render();
+    } else if (action === "select-quiz-scope") {
+      setQuizScope(target.dataset.scope);
       render();
     } else if (action === "select-quiz-count") {
       setQuizCount(target.dataset.count);

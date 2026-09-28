@@ -448,3 +448,17 @@ h2 { margin-bottom: 6px; font-size: 21px; line-height: 1.2; letter-spacing: -.04
 @media (max-width: 420px) {
   .quiz-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+
+/* STEP 3-6: quiz scope selector */
+.quiz-scope-panel { margin: 14px 0; }
+.quiz-scope-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.quiz-scope-button { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-height: 104px; padding: 14px; border: 1px solid var(--line, #ddd); border-radius: 16px; background: var(--card, #fff); color: inherit; text-align: left; cursor: pointer; }
+.quiz-scope-button.active { border-color: var(--teal, #4a9d92); box-shadow: 0 0 0 2px rgba(74,157,146,.12); }
+.quiz-scope-title { font-weight: 700; font-size: 15px; }
+.quiz-scope-description { color: var(--muted, #777); font-size: 12px; line-height: 1.45; }
+.quiz-scope-button .quiz-mode-status { margin-top: auto; font-size: 11px; font-weight: 700; }
+@media (max-width: 720px) {
+  .quiz-scope-grid { grid-template-columns: 1fr; }
+  .quiz-scope-button { min-height: auto; }
+}
