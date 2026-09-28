@@ -372,8 +372,28 @@
     const word = allWords().find(function (item) { return item.id === id; }) || allWords()[0];
     const learned = !!state.mastery[String(word.id)];
     const favorite = state.favorites.indexOf(word.id) >= 0;
-    return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + word.level + " · " + word.part + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + word.word + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + word.meaning + "</p></section>" +
-      '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + word.example + '</p><p class="example-translation">' + word.translation + '</p></section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
+    const editable = Array.isArray(state.customWords) && state.customWords.some(function (item) { return Number(item.id) === Number(word.id); });
+    const editButton = editable ? '<a class="secondary-button" href="#/edit/' + word.id + '">✎ 編集する</a>' : '';
+    return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + escapeHtml(word.level) + " · " + escapeHtml(word.part) + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + escapeHtml(word.word) + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + escapeHtml(word.meaning) + "</p></section>" +
+      '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + escapeHtml(word.example) + '</p><p class="example-translation">' + escapeHtml(word.translation) + '</p>' + (editButton ? '<div style="margin-top:18px">' + editButton + '</div>' : '') + '</section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
+  }
+
+  function editPage(id) {
+    const word = (Array.isArray(state.customWords) ? state.customWords : []).find(function (item) { return Number(item.id) === Number(id); });
+    if (!word) {
+      return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="empty"><strong>編集できる単語が見つかりません。</strong><p>初期テスト用単語は編集対象ではありません。</p></div>';
+    }
+    return '<a class="back-link" href="#/word/' + word.id + '">← 単語詳細に戻る</a>' +
+      '<section class="data-panel rise"><div class="data-step"><span>単語編集</span><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong></div>' +
+      '<p class="card-note">登録済みの単語を修正できます。教材・Chapter・番号はそのまま保持します。</p>' +
+      '<div style="display:grid;gap:14px">' +
+      '<label><strong>英単語・フレーズ</strong><input id="edit-word" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.word) + '"></label>' +
+      '<label><strong>日本語の意味</strong><textarea id="edit-meaning" class="data-textarea" style="min-height:90px;margin-top:6px">' + escapeHtml(word.meaning) + '</textarea></label>' +
+      '<label><strong>品詞</strong><input id="edit-part" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.part || '') + '"></label>' +
+      '<label><strong>レベル</strong><input id="edit-level" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.level || '') + '"></label>' +
+      '<label><strong>例文</strong><textarea id="edit-example" class="data-textarea" style="min-height:110px;margin-top:6px">' + escapeHtml(word.example) + '</textarea></label>' +
+      '<label><strong>例文の日本語訳</strong><textarea id="edit-translation" class="data-textarea" style="min-height:110px;margin-top:6px">' + escapeHtml(word.translation) + '</textarea></label>' +
+      '</div><div class="data-actions" style="margin-top:18px"><button class="secondary-button" data-action="cancel-edit" data-id="' + word.id + '">キャンセル</button><button class="primary-button" data-action="save-edit" data-id="' + word.id + '">変更を保存</button></div></section>';
   }
 
   function shuffle(items) {
@@ -634,6 +654,7 @@
     else if (route === "/history") content = historyPage();
     else if (route === "/data") content = dataPage();
     else if (/^\/word\/\d+$/.test(route)) content = detailPage(Number(route.split("/")[2]));
+    else if (/^\/edit\/\d+$/.test(route)) content = editPage(Number(route.split("/")[2]));
     else content = homePage();
     document.getElementById("app").innerHTML = shell(content);
     if (route === "/vocabulary") {
@@ -693,6 +714,35 @@
         state.importMessage = additions.length + "語を登録しました。";
         state.quiz = null;
       }
+      render();
+    } else if (action === "cancel-edit") {
+      location.hash = "#/word/" + target.dataset.id;
+    } else if (action === "save-edit") {
+      const id = Number(target.dataset.id);
+      const index = (Array.isArray(state.customWords) ? state.customWords : []).findIndex(function (item) { return Number(item.id) === id; });
+      if (index < 0) return;
+      const wordInput = document.getElementById("edit-word");
+      const meaningInput = document.getElementById("edit-meaning");
+      const partInput = document.getElementById("edit-part");
+      const levelInput = document.getElementById("edit-level");
+      const exampleInput = document.getElementById("edit-example");
+      const translationInput = document.getElementById("edit-translation");
+      const updated = Object.assign({}, state.customWords[index], {
+        word: wordInput ? wordInput.value.trim() : state.customWords[index].word,
+        meaning: meaningInput ? meaningInput.value.trim() : state.customWords[index].meaning,
+        part: partInput ? partInput.value.trim() : state.customWords[index].part,
+        level: levelInput ? levelInput.value.trim() : state.customWords[index].level,
+        example: exampleInput ? exampleInput.value.trim() : state.customWords[index].example,
+        translation: translationInput ? translationInput.value.trim() : state.customWords[index].translation
+      });
+      if (!updated.word || !updated.meaning || !updated.example || !updated.translation) {
+        alert("英単語・意味・例文・例文の日本語訳は入力してください。");
+        return;
+      }
+      state.customWords[index] = updated;
+      save(KEYS.customWords, state.customWords);
+      state.quiz = null;
+      location.hash = "#/word/" + id;
       render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);
