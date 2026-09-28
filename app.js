@@ -58,7 +58,8 @@
     customWords: read(KEYS.customWords, []),
     importDraft: null,
     importMessage: "",
-    importText: ""
+    importText: "",
+    importMode: "add"
   };
 
   function read(key, fallback) {
@@ -477,12 +478,64 @@
 
   function maskExampleSentence(example, answerWord) {
     const source = String(example || "");
-    const target = String(answerWord || "");
+    const target = String(answerWord || "").trim();
     if (!target) return source;
-    const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp("\\b" + escaped + "\\b", "i");
-    if (pattern.test(source)) return source.replace(pattern, "□□□□");
-    const fallback = new RegExp(escaped, "i");
+
+    function esc(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function tokenPattern(token) {
+      const t = token.trim();
+      if (!t) return "";
+      if (/^sb$/i.test(t)) return "(?:me|you|him|her|us|them|someone|the\\s+[A-Za-z]+)";
+      if (/^sth$/i.test(t)) return "(?:it|this|that|something|the\\s+[A-Za-z]+(?:\\s+[A-Za-z]+){0,2})";
+      if (/^sb's$/i.test(t)) return "(?:my|your|his|her|our|their|someone's|the\\s+[A-Za-z]+(?:'s))";
+      if (/^one's$/i.test(t)) return "(?:my|your|his|her|our|their)";
+      if (/^\(sb\)$/i.test(t)) return "(?:me|you|him|her|us|them|someone)";
+      if (/^\(that\)$/i.test(t)) return "(?:that)?";
+      if (/^sth\/sb$/i.test(t)) return "(?:it|this|that|something|me|you|him|her|us|them|the\\s+[A-Za-z]+(?:\\s+[A-Za-z]+){0,2})";
+      return esc(t);
+    }
+
+    const normalized = target.replace(/\\(sb\\)/gi, "(sb)").replace(/\\(sth\\)/gi, "(sth)");
+    const tokens = normalized.split(/(\\s+)/);
+    let patternText = "";
+    tokens.forEach(function (token) {
+      if (/^\\s+$/.test(token)) patternText += "\\s+";
+      else {
+        const p = tokenPattern(token);
+        // Allow common inflections when the first word is a regular verb.
+        if (!patternText && /^[A-Za-z]+$/.test(token) && /(?:ed|ing|s)?$/.test(token)) {
+          const irregular = { drive: "drive|drives|drove|driven|driving", bug: "bug|bugs|bugged|bugging", freak: "freak|freaks|freaked|freaking", give: "give|gives|gave|given|giving", get: "get|gets|got|getting", take: "take|takes|took|taken|taking", put: "put|puts|putting", turn: "turn|turns|turned|turning", keep: "keep|keeps|kept|keeping", make: "make|makes|made|making", call: "call|calls|called|calling", show: "show|shows|showed|shown|showing", throw: "throw|throws|threw|thrown|throwing", pull: "pull|pulls|pulled|pulling", push: "push|pushes|pushed|pushing", carry: "carry|carries|carried|carrying", leave: "leave|leaves|left|leaving", have: "have|has|had|having", hold: "hold|holds|held|holding", cut: "cut|cuts|cutting", break: "break|breaks|broke|broken|breaking", bite: "bite|bites|bit|bitten|biting", wind: "wind|winds|wound|winding", run: "run|runs|ran|running", walk: "walk|walks|walked|walking", set: "set|sets|setting", speak: "speak|speaks|spoke|spoken|speaking", stick: "stick|sticks|stuck|sticking", sing: "sing|sings|sang|sung|singing", ring: "ring|rings|rang|rung|ringing", think: "think|thinks|thought|thinking", look: "look|looks|looked|looking", tell: "tell|tells|told|telling", go: "go|goes|went|gone|going", come: "come|comes|came|coming", bring: "bring|brings|brought|bringing", work: "work|works|worked|working", play: "play|plays|played|playing", hit: "hit|hits|hitting", drop: "drop|drops|dropped|dropping", spot: "spot|spots|spotted|spotting", borrow: "borrow|borrows|borrowed|borrowing", crack: "crack|cracks|cracked|cracking", rough: "rough|roughs|roughed|roughing", nag: "nag|nags|nagged|nagging", spruce: "spruce|spruces|spruced|sprucing", jazz: "jazz|jazzes|jazzed|jazzing", wrap: "wrap|wraps|wrapped|wrapping", park: "park|parks|parked|parking", table: "table|tables|tabled|tabling", ramp: "ramp|ramps|ramped|ramping", sugarcoat: "sugarcoat|sugarcoats|sugarcoated|sugarcoating", "front-load": "front-load|front-loads|front-loaded|front-loading", "drip-feed": "drip-feed|drip-feeds|drip-fed|drip-feeding", weed: "weed|weeds|weeded|weeding", wind: "wind|winds|wound|winding" };
+          if (irregular[token.toLowerCase()]) patternText += "(?:" + irregular[token.toLowerCase()].split("|").map(esc).join("|") + ")";
+          else patternText += p + "(?:s|es|ed|d|ing)?";
+        } else {
+          patternText += p;
+        }
+      }
+    });
+
+    try {
+      const pattern = new RegExp("\\b" + patternText + "\\b", "i");
+      if (pattern.test(source)) return source.replace(pattern, "□□□□");
+    } catch (_) {}
+
+    // Phrasal verbs can place the object between or after the particle.
+    if (/\b(?:sth|sb|sth\/sb)\b/i.test(target)) {
+      const parts = target.split(/\s+/);
+      const verb = parts[0];
+      const particle = parts[parts.length - 1];
+      if (parts.length >= 3 && /^(?:up|off|down|out|back|over|on|in)$/i.test(particle)) {
+        const verbVariants = { turn: "turn|turns|turned|turning", drop: "drop|drops|dropped|dropping", hold: "hold|holds|held|holding", cut: "cut|cuts|cutting", put: "put|puts|putting", take: "take|takes|took|taken|taking", bring: "bring|brings|brought|bringing", get: "get|gets|got|getting", give: "give|gives|gave|given|giving", call: "call|calls|called|calling", wrap: "wrap|wraps|wrapped|wrapping", clear: "clear|clears|cleared|clearing", lock: "lock|locks|locked|locking", roll: "roll|rolls|rolled|rolling", throw: "throw|throws|threw|thrown|throwing", take: "take|takes|took|taken|taking" };
+        const vp = verbVariants[verb.toLowerCase()] || esc(verb) + "(?:s|es|ed|d|ing)?";
+        const obj = "(?:it|this|that|something|the\\s+[A-Za-z]+(?:\\s+[A-Za-z]+){0,2}|me|you|him|her|us|them)";
+        const loose = new RegExp("\\b(?:" + vp + ")\\s+(?:" + obj + "\\s+)?" + esc(particle) + "\\b", "i");
+        if (loose.test(source)) return source.replace(loose, "□□□□");
+      }
+    }
+
+    const fallback = new RegExp(esc(target), "i");
     return fallback.test(source) ? source.replace(fallback, "□□□□") : "□□□□";
   }
 
@@ -639,7 +692,7 @@
       '<section class="data-panel rise"><div class="data-step"><span>STEP 1</span><strong>登録データを用意</strong></div><p class="card-note">写真からAIに単語データを作ってもらう場合は、下の形式のJSONにしてから貼り付けます。numberは教材と同じ通し番号（Chapter 1=1〜100、Chapter 2=101〜200、Chapter 3=201〜300、Chapter 4=301〜400）を使います。</p><details class="data-format"><summary>JSON形式を見る</summary><pre>' + escapeHtml(jsonExample) + '</pre></details></section>' +
       '<section class="data-panel rise"><div class="data-step"><span>STEP 2</span><strong>JSONを貼り付ける</strong></div><textarea id="word-json-input" class="data-textarea" placeholder="ここにJSONを貼り付けてください">' + escapeHtml(state.importText) + '</textarea><div class="data-actions"><button class="secondary-button" data-action="preview-import">プレビュー</button><label class="secondary-button file-button">JSONファイルを選択<input id="word-json-file" type="file" accept="application/json,.json" hidden></label></div></section>' +
       (state.importMessage ? '<div class="data-message">' + escapeHtml(state.importMessage).replace(/\n/g, "<br>") + '</div>' : '') +
-      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 重複' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button></section>' : '') +
+      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 既存（更新可能）' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><div class="data-actions" style="margin-top:12px"><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button>' + (draft.some(function (x) { return x._duplicate; }) ? '<button class="secondary-button" data-action="update-import">既存単語を更新する</button>' : '') + '</div></section>' : '') +
       '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。現在のテスト用20語はそのまま残ります。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
   }
 
@@ -714,6 +767,25 @@
         state.importMessage = additions.length + "語を登録しました。";
         state.quiz = null;
       }
+      render();
+    } else if (action === "update-import") {
+      const rows = state.importDraft || [];
+      let updatedCount = 0;
+      const custom = Array.isArray(state.customWords) ? state.customWords.slice() : [];
+      rows.forEach(function (row) {
+        const index = custom.findIndex(function (item) {
+          return item.book === row.book && Number(item.number) === Number(row.number);
+        });
+        if (index < 0) return;
+        const old = custom[index];
+        custom[index] = Object.assign({}, row, { id: old.id });
+        updatedCount += 1;
+      });
+      state.customWords = custom;
+      save(KEYS.customWords, state.customWords);
+      state.importDraft = null;
+      state.importMessage = updatedCount + "語の既存データを更新しました。";
+      state.quiz = null;
       render();
     } else if (action === "cancel-edit") {
       location.hash = "#/word/" + target.dataset.id;
