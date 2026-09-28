@@ -587,15 +587,26 @@
 
   function prepareImportedWords(rows) {
     let nextId = nextWordId();
+
+    // 重複判定では、最初から入っているテスト用WORDSを除外し、
+    // ユーザーが実際に追加したcustomWordsだけを「登録済み」として扱う。
+    const registeredWords = Array.isArray(state.customWords)
+      ? state.customWords
+      : [];
+
     return rows.map(function (row, rowIndex) {
-      const same = allWords().some(function (word) {
+      // すでにユーザーが追加した単語との重複を確認
+      const same = registeredWords.some(function (word) {
         return word.book === row.book && Number(word.number) === Number(row.number);
       });
       if (same) return Object.assign({}, row, { _duplicate: true });
+
+      // 今回読み込んだJSON内での重複を確認
       const sameNew = rows.slice(0, rowIndex).some(function (x) {
         return x.book === row.book && Number(x.number) === Number(row.number);
       });
       if (sameNew) return Object.assign({}, row, { _duplicate: true });
+
       return Object.assign({}, row, { id: nextId++, _duplicate: false });
     });
   }
