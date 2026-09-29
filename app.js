@@ -30,6 +30,7 @@
   const QUIZ_COUNTS = [5, 10, 20, 30, 50];
   const QUIZ_SCOPES = [
     { id: "all", label: "すべて", description: "選択した教材・Chapterの全単語から出題" },
+    { id: "today", label: "今日のおすすめ", description: "苦手・未習得を優先して今日の学習セットを作成" },
     { id: "unlearned", label: "未習得のみ", description: "まだ「覚えた」にしていない単語から出題" },
     { id: "wrong", label: "間違えた単語", description: "これまでにクイズで間違えた単語から出題" }
   ];
@@ -163,8 +164,22 @@
     return true;
   }
 
+  function todayStudyWords() {
+    const base = selectedWords().slice();
+    const weak = base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; })
+      .sort(function (a, b) {
+        return (state.wrong[String(b.id)] || 0) - (state.wrong[String(a.id)] || 0);
+      });
+    const unlearned = base.filter(function (word) { return !state.mastery[String(word.id)] && !(state.wrong[String(word.id)] || 0); });
+    const rest = base.filter(function (word) {
+      return state.mastery[String(word.id)] && !(state.wrong[String(word.id)] || 0);
+    });
+    return weak.concat(unlearned, rest);
+  }
+
   function quizPool() {
     const base = selectedWords();
+    if (state.quizScope === "today") return todayStudyWords();
     if (state.quizScope === "unlearned") {
       return base.filter(function (word) { return !state.mastery[String(word.id)]; });
     }
@@ -353,12 +368,22 @@
       (currentWords.length ? '<section class="study-current card rise"><div><p class="eyebrow">current study set</p><h2>' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</h2><p class="card-note">' + currentWords.length + '語が学習対象です。</p></div><a class="primary-button" href="#/quiz">' + icon("play", 15) + 'クイズを始める</a></section>' : '<section class="empty rise"><strong>この教材・Chapterにはまだ単語が登録されていません。</strong><p>単語データを追加すると、ここから学習できるようになります。</p></section>');
   }
 
+  function todayStudySummary() {
+    const base = selectedWords();
+    const weak = base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; });
+    const unlearned = base.filter(function (word) { return !state.mastery[String(word.id)] && !(state.wrong[String(word.id)] || 0); });
+    const target = Math.min(20, base.length);
+    return { weak: weak.length, unlearned: unlearned.length, target: target };
+  }
+
   function homePage() {
     const studyWords = selectedWords();
     const studyLearned = studyWords.filter(function (word) { return !!state.mastery[String(word.id)]; }).length;
     const weak = weakWords();
     const today = new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
+    const todayPlan = todayStudySummary();
     return '<div class="rise" style="margin-bottom:24px;color:var(--muted);font-size:12px;font-weight:700">' + icon("calendar", 15) + " " + today + "</div>" +
+      '<section class="card rise" style="margin-bottom:18px"><div class="card-head"><div><p class="card-title">今日のおすすめ</p><p class="card-note">苦手 → 未習得の順で、最大20問を自動で選びます。</p></div><span class="badge">' + todayPlan.target + '問</span></div><div style="display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 16px"><span class="card-note">苦手 <strong style="color:var(--teal-deep)">' + todayPlan.weak + '語</strong></span><span class="card-note">未習得 <strong style="color:var(--teal-deep)">' + todayPlan.unlearned + '語</strong></span></div><button class="primary-button" data-action="today-quiz">' + icon("play", 15) + '今日の20問を始める</button></section>' +
       '<section class="hero rise"><div class="hero-content"><p class="eyebrow">' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</p><h1>今日は、<br><strong>5分だけ。</strong></h1><p class="hero-copy">短い時間でも、続けた分だけ言葉はあなたのものになります。</p><a class="primary-button" href="#/quiz">' + icon("play", 16) + "今日の練習を始める</a></div></section>" +
       '<div class="grid two-col"><section class="card rise"><div class="card-head"><div><p class="card-title">今週のペース</p><p class="card-note">急がず、でも途切れずに。</p></div><span class="badge">7日連続</span></div><div class="bars">' + ["月", "火", "水", "木", "金", "土", "日"].map(function (day, index) { return '<div class="bar-item"><i style="height:' + [30, 48, 34, 58, 43, 64, 55][index] + 'px"></i><span>' + day + "</span></div>"; }).join("") + "</div></section>" +
       '<section class="card rise"><div class="card-head"><div><p class="card-title">単語の進み具合</p><p class="card-note">' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</p></div>' + icon("target", 19) + '</div><div class="progress-number"><strong>' + studyLearned + '</strong><span>/ ' + studyWords.length + ' 語</span></div><div class="progress-track"><i style="width:' + (studyWords.length ? studyLearned / studyWords.length * 100 : 0) + '%"></i></div></section></div>' +
@@ -728,6 +753,19 @@
     } else if (action === "mastery") {
       state.mastery[target.dataset.id] = target.dataset.value === "true";
       persist();
+      render();
+    } else if (action === "today-quiz") {
+      const pool = todayStudyWords();
+      if (!pool.length) {
+        window.alert("今日の学習対象がありません。");
+        return;
+      }
+      state.quizScope = "today";
+      state.quizCount = 20;
+      save(KEYS.quizScope, state.quizScope);
+      save(KEYS.quizCount, state.quizCount);
+      newQuiz();
+      window.location.hash = "#/quiz";
       render();
     } else if (action === "weak-quiz") {
       const count = Number(target.dataset.count);
