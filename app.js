@@ -7,10 +7,6 @@
     throw new Error("words.js must be loaded before app.js");
   }
 
-  // 初期サンプル20語（ID 1〜20）は学習対象から除外します。
-  // Distinction等の追加データはID 21以降なので影響しません。
-  const SAMPLE_WORD_IDS = new Set(Array.from({ length: 20 }, function (_, index) { return index + 1; }));
-
   const KEYS = {
     mastery: "met-mastery",
     favorites: "met-favorites",
@@ -31,17 +27,17 @@
     { id: "seed-2", date: "2024-06-12", score: 6, total: 8, minutes: 7 },
     { id: "seed-3", date: "2024-06-10", score: 7, total: 10, minutes: 11 }
   ];
-  const QUIZ_COUNTS = [10, 20, 30, 50];
+  const QUIZ_COUNTS = [5, 10, 20, 30, 50, 100];
   const QUIZ_SCOPES = [
     { id: "all", label: "すべて", description: "選択した教材・Chapterの全単語から出題" },
+    { id: "today", label: "今日のおすすめ", description: "苦手・未習得を優先して今日の学習セットを作成" },
     { id: "unlearned", label: "未習得のみ", description: "まだ「覚えた」にしていない単語から出題" },
     { id: "wrong", label: "間違えた単語", description: "これまでにクイズで間違えた単語から出題" }
   ];
   const QUIZ_MODES = [
     { id: "en-ja", label: "英語 → 日本語", description: "英単語を見て、日本語の意味を4択から選ぶ", status: "利用可能" },
     { id: "ja-en", label: "日本語 → 英語", description: "日本語の意味を見て、英単語を4択から選ぶ", status: "利用可能" },
-    { id: "example-word", label: "例文 → 単語", description: "例文の正解部分を隠して、該当する英単語を4択から選ぶ", status: "利用可能" },
-    { id: "multiple-choice", label: "4択", description: "英単語を見て、4つの日本語から選ぶ", status: "利用可能" }
+    { id: "example-word", label: "例文 → 単語", description: "例文の正解部分を隠して、該当する英単語を4択から選ぶ", status: "利用可能" }
   ];
 
   const state = {
@@ -52,7 +48,7 @@
     history: read(KEYS.history, DEFAULT_HISTORY),
     selectedBook: read(KEYS.selectedBook, "distinction1"),
     selectedChapter: read(KEYS.selectedChapter, "all"),
-    quizMode: read(KEYS.quizMode, "multiple-choice"),
+    quizMode: read(KEYS.quizMode, "en-ja"),
     quizCount: read(KEYS.quizCount, 20),
     quizScope: read(KEYS.quizScope, "all"),
     search: "",
@@ -62,19 +58,8 @@
     customWords: read(KEYS.customWords, []),
     importDraft: null,
     importMessage: "",
-    importText: "",
-    deleteTarget: null
+    importText: ""
   };
-
-  // 初期サンプル20語に紐づいていた記録も学習統計から除外します。
-  SAMPLE_WORD_IDS.forEach(function (id) {
-    delete state.mastery[String(id)];
-    delete state.wrong[String(id)];
-    delete state.correct[String(id)];
-  });
-  state.favorites = Array.isArray(state.favorites)
-    ? state.favorites.filter(function (id) { return !SAMPLE_WORD_IDS.has(Number(id)); })
-    : [];
 
   function read(key, fallback) {
     try {
@@ -98,9 +83,6 @@
     save(KEYS.customWords, state.customWords);
   }
 
-  // 初回起動時にサンプル20語の記録削除を保存
-  persist();
-
   const BOOKS = [
     { id: "distinction1", label: "Distinction 1" },
     { id: "distinction2", label: "Distinction 2" },
@@ -120,9 +102,7 @@
   }
 
   function allWords() {
-    return WORDS.filter(function (word) {
-      return !SAMPLE_WORD_IDS.has(Number(word.id));
-    }).concat(Array.isArray(state.customWords) ? state.customWords : []);
+    return WORDS.concat(Array.isArray(state.customWords) ? state.customWords : []);
   }
 
   function sortByNumber(list) {
@@ -145,13 +125,13 @@
   }
 
   function selectedQuizMode() {
-    return QUIZ_MODES.find(function (mode) { return mode.id === state.quizMode; }) || QUIZ_MODES[3];
+    return QUIZ_MODES.find(function (mode) { return mode.id === state.quizMode; }) || QUIZ_MODES[0];
   }
 
   function setQuizMode(modeId) {
     const mode = QUIZ_MODES.find(function (item) { return item.id === modeId; });
     if (!mode) return;
-    if (["multiple-choice", "en-ja", "ja-en", "example-word"].indexOf(mode.id) === -1) return;
+    if (["en-ja", "ja-en", "example-word"].indexOf(mode.id) === -1) return;
     state.quizMode = mode.id;
     save(KEYS.quizMode, state.quizMode);
     state.quiz = null;
@@ -183,8 +163,22 @@
     return true;
   }
 
+  function todayStudyWords() {
+    const base = selectedWords().slice();
+    const weak = base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; })
+      .sort(function (a, b) {
+        return (state.wrong[String(b.id)] || 0) - (state.wrong[String(a.id)] || 0);
+      });
+    const unlearned = base.filter(function (word) { return !state.mastery[String(word.id)] && !(state.wrong[String(word.id)] || 0); });
+    const rest = base.filter(function (word) {
+      return state.mastery[String(word.id)] && !(state.wrong[String(word.id)] || 0);
+    });
+    return weak.concat(unlearned, rest);
+  }
+
   function quizPool() {
     const base = selectedWords();
+    if (state.quizScope === "today") return todayStudyWords();
     if (state.quizScope === "unlearned") {
       return base.filter(function (word) { return !state.mastery[String(word.id)]; });
     }
@@ -239,8 +233,8 @@
   }
 
   ensureStudySelection();
-  if (!QUIZ_MODES.some(function (mode) { return mode.id === state.quizMode; })) {
-    state.quizMode = "multiple-choice";
+  if (!QUIZ_MODES.some(function (mode) { return mode.id === state.quizMode; }) || state.quizMode === "multiple-choice") {
+    state.quizMode = "en-ja";
     save(KEYS.quizMode, state.quizMode);
   }
   if (!QUIZ_SCOPES.some(function (scope) { return scope.id === state.quizScope; })) {
@@ -311,14 +305,7 @@
     const menu = state.mobileMenu ? '<div class="mobile-menu">' + navLinks("mobile", route) + '<a class="nav-link" href="#/data">' + icon("book", 17) + '<span>単語データ登録</span></a></div>' : "";
     return '<div class="app-shell">' +
       '<aside class="sidebar"><a class="sidebar-brand" href="#/"><span class="brand-mark">m</span><span><span class="brand-name">My English</span><span class="brand-sub">trainer</span></span></a><p class="nav-label">学習メニュー</p><nav class="side-nav">' + navLinks("side", route) + '</nav><a class="data-nav-link" href="#/data">' + icon("book", 17) + '<span>単語データ登録</span></a><div class="streak-box"><div class="streak-title"><span>習慣</span><span>7 DAYS</span></div><div class="streak-number">' + streakDays() + '<small>日連続</small></div><div class="streak-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></aside>' +
-      '<div class="main-column"><header class="topbar"><button class="menu-button" data-action="menu" aria-label="メニュー">☰</button><a class="study-selector" href="#/study"><span class="study-selector-book">' + selectedBookLabel() + '</span><span class="study-selector-chapter">' + selectedChapterLabel() + '</span></a><div class="desktop-message"><small>your small daily practice</small><strong>' + (route === "/" ? "焦らず、ひとつずつ。" : "今日も少しだけ、英語と向き合う。") + "</strong></div><a class=\"quick-button\" href=\"#/quiz\">" + icon("play", 14) + "5分クイズ</a></header>" + menu + '<main class="content">' + content + '</main><nav class="bottom-nav">' + bottomLinks(route) + "</nav></div>" + deleteConfirmModal() + "</div>";
-  }
-
-  function deleteConfirmModal() {
-    if (state.deleteTarget === null) return "";
-    const word = allWords().find(function (item) { return Number(item.id) === Number(state.deleteTarget); });
-    if (!word) return "";
-    return '<div class="delete-modal-backdrop" role="presentation" style="position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.52);display:flex;align-items:center;justify-content:center;padding:20px"><section class="delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-title" style="width:min(460px,100%);background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(15,23,42,.25)"><p class="eyebrow">確認</p><h2 id="delete-title">この単語を削除しますか？</h2><div class="delete-modal-word"><strong>' + String(Number(word.number)).padStart(3, "0") + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span></div><p class="card-note">この操作は取り消せません。登録した単語と、この単語の習熟度・苦手記録・お気に入り登録も削除されます。</p><div class="data-actions" style="margin-top:20px"><button class="secondary-button" data-action="cancel-delete">キャンセル</button><button class="danger-button" style="display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:0;border-radius:10px;background:#b42318;color:#fff;font-weight:800" data-action="confirm-delete" data-id="' + word.id + '">削除する</button></div></section></div>';
+      '<div class="main-column"><header class="topbar"><button class="menu-button" data-action="menu" aria-label="メニュー">☰</button><a class="study-selector" href="#/study"><span class="study-selector-book">' + selectedBookLabel() + '</span><span class="study-selector-chapter">' + selectedChapterLabel() + '</span></a><div class="desktop-message"><small>your small daily practice</small><strong>' + (route === "/" ? "焦らず、ひとつずつ。" : "今日も少しだけ、英語と向き合う。") + "</strong></div><a class=\"quick-button\" href=\"#/quiz\">" + icon("play", 14) + "5分クイズ</a></header>" + menu + '<main class="content">' + content + '</main><nav class="bottom-nav">' + bottomLinks(route) + "</nav></div></div>";
   }
 
   function pageHead(eyebrow, title, description, count) {
@@ -328,20 +315,30 @@
   function wordRow(word) {
     const learned = !!state.mastery[String(word.id)];
     const favorite = state.favorites.indexOf(word.id) >= 0;
-    const editable = Array.isArray(state.customWords) && state.customWords.some(function (item) { return Number(item.id) === Number(word.id); });
-    const management = editable
-      ? '<div class="word-management" style="display:flex;align-items:center;gap:6px;flex-shrink:0"><a class="word-edit-button" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border:1px solid var(--line,#d9e2e8);border-radius:8px;text-decoration:none;font-size:12px;font-weight:700;background:#fff;color:inherit" href="#/edit/' + word.id + '" aria-label="' + escapeHtml(word.word) + 'を編集">編集</a><button class="word-delete-button" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border:1px solid #e5b7b7;border-radius:8px;font-size:12px;font-weight:700;background:#fff;color:#b42318" data-action="request-delete" data-id="' + word.id + '" aria-label="' + escapeHtml(word.word) + 'を削除">削除</button></div>'
-      : '';
     return '<div class="word-row ' + (learned ? "" : "unlearned") + '">' +
-      '<a class="word-link" href="#/word/' + word.id + '"><span class="word-number">' + String(Number(word.number) || 0).padStart(3, "0") + '</span><span class="word-text"><strong>' + escapeHtml(word.word) + "</strong><span>" + escapeHtml(word.meaning) + "</span></span></a>" +
-      '<button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="' + escapeHtml(word.word) + 'をお気に入り">' + icon("star", 17) + "</button>" +
-      '<span class="status ' + (learned ? "" : "unlearned") + '">' + (learned ? "習得済み" : "未学習") + "</span>" + management + '</div>';
+      '<a class="word-link" href="#/word/' + word.id + '"><span class="word-number">' + String(Number(word.number) || 0).padStart(3, "0") + '</span><span class="word-text"><strong>' + word.word + "</strong><span>" + word.meaning + "</span></span></a>" +
+      '<button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="' + word.word + 'をお気に入り">' + icon("star", 17) + "</button>" +
+      '<span class="status ' + (learned ? "" : "unlearned") + '">' + (learned ? "習得済み" : "未学習") + "</span></div>";
   }
 
   function weakWords() {
+    // 「苦手単語」は、実際にクイズで1回以上間違えた単語だけを対象にする。
+    // まだ学習していない単語は「未習得」であり、「苦手」とは分けて扱う。
     return selectedWords().filter(function (word) {
-      return (state.wrong[String(word.id)] || 0) > 0 || !state.mastery[String(word.id)];
+      return (state.wrong[String(word.id)] || 0) > 0;
+    }).sort(function (a, b) {
+      return (state.wrong[String(b.id)] || 0) - (state.wrong[String(a.id)] || 0);
     });
+  }
+
+  function weakWordRow(word) {
+    const learned = !!state.mastery[String(word.id)];
+    const favorite = state.favorites.indexOf(word.id) >= 0;
+    const wrongCount = state.wrong[String(word.id)] || 0;
+    return '<div class="word-row ' + (learned ? "" : "unlearned") + '">' +
+      '<a class="word-link" href="#/word/' + word.id + '"><span class="word-number">' + String(Number(word.number) || 0).padStart(3, "0") + '</span><span class="word-text"><strong>' + word.word + "</strong><span>" + word.meaning + '</span></span></a>' +
+      '<button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="' + word.word + 'をお気に入り">' + icon("star", 17) + '</button>' +
+      '<span class="status unlearned">' + wrongCount + '回ミス</span></div>';
   }
 
   function streakDays() {
@@ -370,12 +367,22 @@
       (currentWords.length ? '<section class="study-current card rise"><div><p class="eyebrow">current study set</p><h2>' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</h2><p class="card-note">' + currentWords.length + '語が学習対象です。</p></div><a class="primary-button" href="#/quiz">' + icon("play", 15) + 'クイズを始める</a></section>' : '<section class="empty rise"><strong>この教材・Chapterにはまだ単語が登録されていません。</strong><p>単語データを追加すると、ここから学習できるようになります。</p></section>');
   }
 
+  function todayStudySummary() {
+    const base = selectedWords();
+    const weak = base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; });
+    const unlearned = base.filter(function (word) { return !state.mastery[String(word.id)] && !(state.wrong[String(word.id)] || 0); });
+    const target = Math.min(20, base.length);
+    return { weak: weak.length, unlearned: unlearned.length, target: target };
+  }
+
   function homePage() {
     const studyWords = selectedWords();
     const studyLearned = studyWords.filter(function (word) { return !!state.mastery[String(word.id)]; }).length;
     const weak = weakWords();
     const today = new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
+    const todayPlan = todayStudySummary();
     return '<div class="rise" style="margin-bottom:24px;color:var(--muted);font-size:12px;font-weight:700">' + icon("calendar", 15) + " " + today + "</div>" +
+      '<section class="card rise" style="margin-bottom:18px"><div class="card-head"><div><p class="card-title">今日のおすすめ</p><p class="card-note">苦手 → 未習得の順で、最大20問を自動で選びます。</p></div><span class="badge">' + todayPlan.target + '問</span></div><div style="display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 16px"><span class="card-note">苦手 <strong style="color:var(--teal-deep)">' + todayPlan.weak + '語</strong></span><span class="card-note">未習得 <strong style="color:var(--teal-deep)">' + todayPlan.unlearned + '語</strong></span></div><button class="primary-button" data-action="today-quiz">' + icon("play", 15) + '今日の20問を始める</button></section>' +
       '<section class="hero rise"><div class="hero-content"><p class="eyebrow">' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</p><h1>今日は、<br><strong>5分だけ。</strong></h1><p class="hero-copy">短い時間でも、続けた分だけ言葉はあなたのものになります。</p><a class="primary-button" href="#/quiz">' + icon("play", 16) + "今日の練習を始める</a></div></section>" +
       '<div class="grid two-col"><section class="card rise"><div class="card-head"><div><p class="card-title">今週のペース</p><p class="card-note">急がず、でも途切れずに。</p></div><span class="badge">7日連続</span></div><div class="bars">' + ["月", "火", "水", "木", "金", "土", "日"].map(function (day, index) { return '<div class="bar-item"><i style="height:' + [30, 48, 34, 58, 43, 64, 55][index] + 'px"></i><span>' + day + "</span></div>"; }).join("") + "</div></section>" +
       '<section class="card rise"><div class="card-head"><div><p class="card-title">単語の進み具合</p><p class="card-note">' + selectedBookLabel() + ' · ' + selectedChapterLabel() + '</p></div>' + icon("target", 19) + '</div><div class="progress-number"><strong>' + studyLearned + '</strong><span>/ ' + studyWords.length + ' 語</span></div><div class="progress-track"><i style="width:' + (studyWords.length ? studyLearned / studyWords.length * 100 : 0) + '%"></i></div></section></div>' +
@@ -403,28 +410,8 @@
     const word = allWords().find(function (item) { return item.id === id; }) || allWords()[0];
     const learned = !!state.mastery[String(word.id)];
     const favorite = state.favorites.indexOf(word.id) >= 0;
-    const editable = Array.isArray(state.customWords) && state.customWords.some(function (item) { return Number(item.id) === Number(word.id); });
-    const editButton = editable ? '<a class="secondary-button" href="#/edit/' + word.id + '">✎ 編集する</a>' : '';
-    return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + escapeHtml(word.level) + " · " + escapeHtml(word.part) + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + escapeHtml(word.word) + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + escapeHtml(word.meaning) + "</p></section>" +
-      '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + escapeHtml(word.example) + '</p><p class="example-translation">' + escapeHtml(word.translation) + '</p>' + (editButton ? '<div style="margin-top:18px">' + editButton + '</div>' : '') + '</section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
-  }
-
-  function editPage(id) {
-    const word = (Array.isArray(state.customWords) ? state.customWords : []).find(function (item) { return Number(item.id) === Number(id); });
-    if (!word) {
-      return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="empty"><strong>編集できる単語が見つかりません。</strong><p>初期テスト用単語は編集対象ではありません。</p></div>';
-    }
-    return '<a class="back-link" href="#/word/' + word.id + '">← 単語詳細に戻る</a>' +
-      '<section class="data-panel rise"><div class="data-step"><span>単語編集</span><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong></div>' +
-      '<p class="card-note">登録済みの単語を修正できます。教材・Chapter・番号はそのまま保持します。</p>' +
-      '<div style="display:grid;gap:14px">' +
-      '<label><strong>英単語・フレーズ</strong><input id="edit-word" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.word) + '"></label>' +
-      '<label><strong>日本語の意味</strong><textarea id="edit-meaning" class="data-textarea" style="min-height:90px;margin-top:6px">' + escapeHtml(word.meaning) + '</textarea></label>' +
-      '<label><strong>品詞</strong><input id="edit-part" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.part || '') + '"></label>' +
-      '<label><strong>レベル</strong><input id="edit-level" class="search-input" style="width:100%;margin-top:6px" value="' + escapeHtml(word.level || '') + '"></label>' +
-      '<label><strong>例文</strong><textarea id="edit-example" class="data-textarea" style="min-height:110px;margin-top:6px">' + escapeHtml(word.example) + '</textarea></label>' +
-      '<label><strong>例文の日本語訳</strong><textarea id="edit-translation" class="data-textarea" style="min-height:110px;margin-top:6px">' + escapeHtml(word.translation) + '</textarea></label>' +
-      '</div><div class="data-actions" style="margin-top:18px"><button class="secondary-button" data-action="cancel-edit" data-id="' + word.id + '">キャンセル</button><button class="primary-button" data-action="save-edit" data-id="' + word.id + '">変更を保存</button></div></section>';
+    return '<a class="back-link" href="#/vocabulary">← 単語帳に戻る</a><div class="detail-wrap"><section class="detail-hero rise"><div class="detail-top"><span class="pill">' + word.level + " · " + word.part + '</span><button class="favorite-button ' + (favorite ? "active" : "") + '" data-action="favorite" data-id="' + word.id + '" aria-label="お気に入り">' + icon("star", 18) + '</button></div><p class="detail-pronunciation">sound it out</p><div class="detail-word-line"><h1 class="detail-word">' + word.word + '</h1><button class="speak-button" data-action="speak" data-id="' + word.id + '" aria-label="発音を聞く">' + icon("speaker", 19) + "</button></div><p class=\"meaning\">" + word.meaning + "</p></section>" +
+      '<div class="detail-grid"><section class="example-card"><p class="example-label">example sentence</p><p class="example-text">' + word.example + '</p><p class="example-translation">' + word.translation + '</p></section><section class="mastery-card"><p class="mastery-title">習熟度を記録</p><div class="mastery-buttons"><button class="mastery-button ' + (learned ? "active" : "") + '" data-action="mastery" data-value="true" data-id="' + word.id + '">' + icon("check", 17) + "覚えた</button><button class=\"mastery-button " + (!learned ? "active" : "") + '" data-action="mastery" data-value="false" data-id="' + word.id + '">' + icon("x", 17) + "まだ覚えていない</button></div></section></div></div>";
   }
 
   function shuffle(items) {
@@ -477,7 +464,7 @@
       minutes: Math.max(1, Math.round(quiz.total * .8)),
       book: quiz.book,
       chapter: quiz.chapter,
-      mode: quiz.mode || "multiple-choice"
+      mode: quiz.mode || "en-ja"
     });
     quiz.historySaved = true;
   }
@@ -486,7 +473,7 @@
     const currentMode = selectedQuizMode();
     return '<section class="quiz-mode-panel rise"><div class="quiz-mode-head"><div><p class="card-title">クイズ方式</p><p class="card-note">方式を切り替えると、新しいクイズが始まります。</p></div><span class="badge">現在：' + currentMode.label + '</span></div><div class="quiz-mode-grid">' + QUIZ_MODES.map(function (mode) {
       const active = state.quizMode === mode.id;
-      const available = mode.id === "multiple-choice" || mode.id === "en-ja" || mode.id === "ja-en" || mode.id === "example-word";
+      const available = true;
       return '<button class="quiz-mode-button ' + (active ? "active" : "") + (!available ? " disabled" : "") + '" data-action="select-quiz-mode" data-mode="' + mode.id + '" ' + (!available ? 'aria-disabled="true"' : "") + '><span class="quiz-mode-title">' + mode.label + '</span><span class="quiz-mode-description">' + mode.description + '</span><span class="quiz-mode-status">' + (available ? (active ? "選択中" : "選択する") : mode.status) + '</span></button>';
     }).join("") + '</div></section>';
   }
@@ -559,9 +546,15 @@
 
   function weakPage() {
     const weak = weakWords();
-    return pageHead("come back gently", "苦手単語", "間違えた単語と、まだ出会っていない単語をここにまとめています。", '<a class="primary-button" style="min-height:36px;font-size:11px" href="#/quiz">' + icon("play", 13) + "復習クイズ</a>") +
-      '<div class="weak-banner">' + icon("rotate", 16) + "<span><strong>" + weak.length + "語</strong>を自分のペースで復習しましょう。</span></div>" +
-      (weak.length ? '<div class="word-grid">' + weak.map(wordRow).join("") + "</div>" : '<div class="empty"><strong>復習する単語はありません</strong><p>いいペースです。新しい単語にも挑戦してみましょう。</p></div>');
+    const quickCounts = [5, 10, 20];
+    const quickButtons = weak.length ? '<section class="card rise" style="margin-bottom:20px"><div class="card-head"><div><p class="card-title">苦手単語だけで復習</p><p class="card-note">間違えた回数が多い単語から優先して出題します。</p></div><span class="badge">' + weak.length + '語</span></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">' + quickCounts.map(function (count) {
+      const actual = Math.min(count, weak.length);
+      return '<button class="secondary-button" data-action="weak-quiz" data-count="' + count + '" style="min-height:42px">' + actual + '問で復習</button>';
+    }).join("") + '</div></section>' : '';
+    return pageHead("come back gently", "苦手単語", "クイズで間違えた単語を集めています。まだ学習していない単語とは分けて管理します。", weak.length + "語") +
+      '<div class="weak-banner">' + icon("rotate", 16) + "<span><strong>" + weak.length + "語</strong>が復習対象です。正解を重ねると苦手度が下がります。</span></div>" +
+      quickButtons +
+      (weak.length ? '<div class="word-grid">' + weak.map(weakWordRow).join("") + "</div>" : '<div class="empty"><strong>まだ苦手単語はありません</strong><p>クイズで間違えた単語がここに追加されます。まずは通常のクイズに挑戦してみましょう。</p><a class="primary-button" href="#/quiz">' + icon("play", 15) + 'クイズを始める</a></div>');
   }
 
   function historyPage() {
@@ -633,8 +626,7 @@
   }
 
   function nextWordId() {
-    return WORDS.concat(Array.isArray(state.customWords) ? state.customWords : [])
-      .reduce(function (max, word) { return Math.max(max, Number(word.id) || 0); }, 0) + 1;
+    return allWords().reduce(function (max, word) { return Math.max(max, Number(word.id) || 0); }, 0) + 1;
   }
 
   function prepareImportedWords(rows) {
@@ -672,7 +664,7 @@
       '<section class="data-panel rise"><div class="data-step"><span>STEP 2</span><strong>JSONを貼り付ける</strong></div><textarea id="word-json-input" class="data-textarea" placeholder="ここにJSONを貼り付けてください">' + escapeHtml(state.importText) + '</textarea><div class="data-actions"><button class="secondary-button" data-action="preview-import">プレビュー</button><label class="secondary-button file-button">JSONファイルを選択<input id="word-json-file" type="file" accept="application/json,.json" hidden></label></div></section>' +
       (state.importMessage ? '<div class="data-message">' + escapeHtml(state.importMessage).replace(/\n/g, "<br>") + '</div>' : '') +
       (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 重複' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button></section>' : '') +
-      '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。初期サンプル20語は削除済みで、現在の学習対象には含まれません。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
+      '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。現在のテスト用20語はそのまま残ります。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
   }
 
   function render() {
@@ -686,7 +678,6 @@
     else if (route === "/history") content = historyPage();
     else if (route === "/data") content = dataPage();
     else if (/^\/word\/\d+$/.test(route)) content = detailPage(Number(route.split("/")[2]));
-    else if (/^\/edit\/\d+$/.test(route)) content = editPage(Number(route.split("/")[2]));
     else content = homePage();
     document.getElementById("app").innerHTML = shell(content);
     if (route === "/vocabulary") {
@@ -747,55 +738,6 @@
         state.quiz = null;
       }
       render();
-    } else if (action === "cancel-edit") {
-      location.hash = "#/word/" + target.dataset.id;
-    } else if (action === "save-edit") {
-      const id = Number(target.dataset.id);
-      const index = (Array.isArray(state.customWords) ? state.customWords : []).findIndex(function (item) { return Number(item.id) === id; });
-      if (index < 0) return;
-      const wordInput = document.getElementById("edit-word");
-      const meaningInput = document.getElementById("edit-meaning");
-      const partInput = document.getElementById("edit-part");
-      const levelInput = document.getElementById("edit-level");
-      const exampleInput = document.getElementById("edit-example");
-      const translationInput = document.getElementById("edit-translation");
-      const updated = Object.assign({}, state.customWords[index], {
-        word: wordInput ? wordInput.value.trim() : state.customWords[index].word,
-        meaning: meaningInput ? meaningInput.value.trim() : state.customWords[index].meaning,
-        part: partInput ? partInput.value.trim() : state.customWords[index].part,
-        level: levelInput ? levelInput.value.trim() : state.customWords[index].level,
-        example: exampleInput ? exampleInput.value.trim() : state.customWords[index].example,
-        translation: translationInput ? translationInput.value.trim() : state.customWords[index].translation
-      });
-      if (!updated.word || !updated.meaning || !updated.example || !updated.translation) { window.alert("英単語・意味・例文・例文の日本語訳は入力してください。"); return; }
-      state.customWords[index] = updated;
-      save(KEYS.customWords, state.customWords);
-      state.quiz = null;
-      location.hash = "#/word/" + id;
-      render();
-    } else if (action === "request-delete") {
-      const id = Number(target.dataset.id);
-      const word = (Array.isArray(state.customWords) ? state.customWords : []).find(function (item) { return Number(item.id) === id; });
-      if (!word) return;
-      state.deleteTarget = id;
-      render();
-    } else if (action === "cancel-delete") {
-      state.deleteTarget = null;
-      render();
-    } else if (action === "confirm-delete") {
-      const id = Number(target.dataset.id);
-      const index = (Array.isArray(state.customWords) ? state.customWords : []).findIndex(function (item) { return Number(item.id) === id; });
-      if (index < 0) { state.deleteTarget = null; render(); return; }
-      state.customWords.splice(index, 1);
-      delete state.mastery[String(id)];
-      delete state.wrong[String(id)];
-      delete state.correct[String(id)];
-      state.favorites = state.favorites.filter(function (item) { return Number(item) !== id; });
-      state.deleteTarget = null;
-      state.quiz = null;
-      persist();
-      if (/^\/word\/\d+$/.test(currentRoute()) || /^\/edit\/\d+$/.test(currentRoute())) location.hash = "#/vocabulary";
-      render();
     } else if (action === "favorite") {
       const id = Number(target.dataset.id);
       state.favorites = state.favorites.indexOf(id) >= 0 ? state.favorites.filter(function (item) { return item !== id; }) : state.favorites.concat(id);
@@ -811,6 +753,34 @@
       state.mastery[target.dataset.id] = target.dataset.value === "true";
       persist();
       render();
+    } else if (action === "today-quiz") {
+      const pool = todayStudyWords();
+      if (!pool.length) {
+        window.alert("今日の学習対象がありません。");
+        return;
+      }
+      state.quizScope = "today";
+      state.quizCount = 20;
+      save(KEYS.quizScope, state.quizScope);
+      save(KEYS.quizCount, state.quizCount);
+      newQuiz();
+      window.location.hash = "#/quiz";
+      render();
+    } else if (action === "weak-quiz") {
+      const count = Number(target.dataset.count);
+      const weak = weakWords();
+      if (!weak.length) {
+        window.alert("まだ苦手単語はありません。");
+        return;
+      }
+      if (QUIZ_COUNTS.indexOf(count) === -1) return;
+      state.quizScope = "wrong";
+      state.quizCount = count;
+      save(KEYS.quizScope, state.quizScope);
+      save(KEYS.quizCount, state.quizCount);
+      newQuiz();
+      window.location.hash = "#/quiz";
+      render();
     } else if (action === "answer") {
       if (!state.quiz || state.quiz.completed || state.quiz.isAnswered) return;
       const id = Number(target.dataset.id);
@@ -822,6 +792,13 @@
         state.quiz.score += 1;
         state.mastery[String(id)] = true;
         state.correct[String(id)] = (state.correct[String(id)] || 0) + 1;
+        // 正解するたびに苦手度を1段階下げ、0になったら苦手単語から外す。
+        const currentWrong = state.wrong[String(id)] || 0;
+        if (currentWrong > 1) {
+          state.wrong[String(id)] = currentWrong - 1;
+        } else if (currentWrong === 1) {
+          delete state.wrong[String(id)];
+        }
       } else {
         state.wrong[String(questionId)] = (state.wrong[String(questionId)] || 0) + 1;
       }
