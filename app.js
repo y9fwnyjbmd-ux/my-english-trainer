@@ -7,6 +7,10 @@
     throw new Error("words.js must be loaded before app.js");
   }
 
+  // 初期サンプル20語（ID 1〜20）は学習対象から除外します。
+  // Distinction等の追加データはID 21以降なので影響しません。
+  const SAMPLE_WORD_IDS = new Set(Array.from({ length: 20 }, function (_, index) { return index + 1; }));
+
   const KEYS = {
     mastery: "met-mastery",
     favorites: "met-favorites",
@@ -62,6 +66,16 @@
     deleteTarget: null
   };
 
+  // 初期サンプル20語に紐づいていた記録も学習統計から除外します。
+  SAMPLE_WORD_IDS.forEach(function (id) {
+    delete state.mastery[String(id)];
+    delete state.wrong[String(id)];
+    delete state.correct[String(id)];
+  });
+  state.favorites = Array.isArray(state.favorites)
+    ? state.favorites.filter(function (id) { return !SAMPLE_WORD_IDS.has(Number(id)); })
+    : [];
+
   function read(key, fallback) {
     try {
       const value = localStorage.getItem(key);
@@ -84,6 +98,9 @@
     save(KEYS.customWords, state.customWords);
   }
 
+  // 初回起動時にサンプル20語の記録削除を保存
+  persist();
+
   const BOOKS = [
     { id: "distinction1", label: "Distinction 1" },
     { id: "distinction2", label: "Distinction 2" },
@@ -103,7 +120,9 @@
   }
 
   function allWords() {
-    return WORDS.concat(Array.isArray(state.customWords) ? state.customWords : []);
+    return WORDS.filter(function (word) {
+      return !SAMPLE_WORD_IDS.has(Number(word.id));
+    }).concat(Array.isArray(state.customWords) ? state.customWords : []);
   }
 
   function sortByNumber(list) {
@@ -614,7 +633,8 @@
   }
 
   function nextWordId() {
-    return allWords().reduce(function (max, word) { return Math.max(max, Number(word.id) || 0); }, 0) + 1;
+    return WORDS.concat(Array.isArray(state.customWords) ? state.customWords : [])
+      .reduce(function (max, word) { return Math.max(max, Number(word.id) || 0); }, 0) + 1;
   }
 
   function prepareImportedWords(rows) {
@@ -652,7 +672,7 @@
       '<section class="data-panel rise"><div class="data-step"><span>STEP 2</span><strong>JSONを貼り付ける</strong></div><textarea id="word-json-input" class="data-textarea" placeholder="ここにJSONを貼り付けてください">' + escapeHtml(state.importText) + '</textarea><div class="data-actions"><button class="secondary-button" data-action="preview-import">プレビュー</button><label class="secondary-button file-button">JSONファイルを選択<input id="word-json-file" type="file" accept="application/json,.json" hidden></label></div></section>' +
       (state.importMessage ? '<div class="data-message">' + escapeHtml(state.importMessage).replace(/\n/g, "<br>") + '</div>' : '') +
       (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 重複' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button></section>' : '') +
-      '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。現在のテスト用20語はそのまま残ります。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
+      '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。初期サンプル20語は削除済みで、現在の学習対象には含まれません。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
   }
 
   function render() {
