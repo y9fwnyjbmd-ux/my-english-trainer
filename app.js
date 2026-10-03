@@ -35,6 +35,7 @@
   const QUIZ_SCOPES = [
     { id: "all", label: "すべて", description: "選択した教材・Chapterの全単語から出題" },
     { id: "today", label: "今日のおすすめ", description: "苦手・未習得を優先して今日の学習セットを作成" },
+    { id: "favorites", label: "お気に入り", description: "お気に入り登録した単語だけから出題" },
     { id: "unlearned", label: "未習得のみ", description: "まだ「覚えた」にしていない単語から出題" },
     { id: "wrong", label: "間違えた単語", description: "これまでにクイズで間違えた単語から出題" }
   ];
@@ -161,18 +162,25 @@
     const scope = QUIZ_SCOPES.find(function (item) { return item.id === scopeId; });
     if (!scope) return false;
 
-    // 「未習得のみ」「間違えた単語」が0件の場合は、
-    // 出題範囲を変更せず、アラートだけ表示する。
-    if (scope.id === "unlearned" || scope.id === "wrong") {
+    // 対象単語が0件の出題範囲は選択せず、アラートだけ表示する。
+    if (scope.id === "unlearned" || scope.id === "wrong" || scope.id === "favorites") {
       const base = selectedWords();
-      const availableCount = scope.id === "unlearned"
-        ? base.filter(function (word) { return !state.mastery[String(word.id)]; }).length
-        : base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; }).length;
+      let availableCount = 0;
+      if (scope.id === "unlearned") {
+        availableCount = base.filter(function (word) { return !state.mastery[String(word.id)]; }).length;
+      } else if (scope.id === "wrong") {
+        availableCount = base.filter(function (word) { return (state.wrong[String(word.id)] || 0) > 0; }).length;
+      } else {
+        availableCount = base.filter(function (word) { return state.favorites.indexOf(Number(word.id)) >= 0; }).length;
+      }
 
       if (availableCount === 0) {
-        window.alert(scope.id === "unlearned"
+        const message = scope.id === "unlearned"
           ? "未習得の単語がありません。\n「すべて」など別の出題範囲を選択してください。"
-          : "間違えた単語がありません。\n「すべて」など別の出題範囲を選択してください。");
+          : scope.id === "wrong"
+            ? "間違えた単語がありません。\n「すべて」など別の出題範囲を選択してください。"
+            : "お気に入り登録された単語がありません。\n単語帳で☆をタップしてお気に入り登録してください。";
+        window.alert(message);
         return false;
       }
     }
@@ -195,6 +203,9 @@
   function quizPool() {
     const base = selectedWords();
     if (state.quizScope === "today") return todayStudyWords();
+    if (state.quizScope === "favorites") {
+      return base.filter(function (word) { return state.favorites.indexOf(Number(word.id)) >= 0; });
+    }
     if (state.quizScope === "unlearned") {
       return base.filter(function (word) { return !state.mastery[String(word.id)]; });
     }
