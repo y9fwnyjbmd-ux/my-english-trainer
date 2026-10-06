@@ -660,27 +660,33 @@
 
   function prepareImportedWords(rows) {
     let nextId = nextWordId();
+    const registeredWords = Array.isArray(state.customWords) ? state.customWords : [];
+    const seenKeys = new Set();
 
-    // 重複判定では、最初から入っているテスト用WORDSを除外し、
-    // ユーザーが実際に追加したcustomWordsだけを「登録済み」として扱う。
-    const registeredWords = Array.isArray(state.customWords)
-      ? state.customWords
-      : [];
-
+    // 既存の「教材＋番号」があれば「重複」ではなく「更新」として扱います。
+    // これにより、例えば Distinction 1 / 201〜300 の修正版JSONを
+    // そのまま読み込んで既存データを置き換えられます。
     return rows.map(function (row, rowIndex) {
-      // すでにユーザーが追加した単語との重複を確認
-      const same = registeredWords.some(function (word) {
+      const key = row.book + "::" + Number(row.number);
+      if (seenKeys.has(key)) {
+        return Object.assign({}, row, { _duplicate: true, _duplicateInput: true });
+      }
+      seenKeys.add(key);
+
+      const existing = registeredWords.find(function (word) {
         return word.book === row.book && Number(word.number) === Number(row.number);
       });
-      if (same) return Object.assign({}, row, { _duplicate: true });
 
-      // 今回読み込んだJSON内での重複を確認
-      const sameNew = rows.slice(0, rowIndex).some(function (x) {
-        return x.book === row.book && Number(x.number) === Number(row.number);
-      });
-      if (sameNew) return Object.assign({}, row, { _duplicate: true });
+      if (existing) {
+        return Object.assign({}, row, {
+          id: Number(existing.id),
+          _duplicate: false,
+          _replace: true,
+          _existingId: Number(existing.id)
+        });
+      }
 
-      return Object.assign({}, row, { id: nextId++, _duplicate: false });
+      return Object.assign({}, row, { id: nextId++, _duplicate: false, _replace: false });
     });
   }
 
@@ -692,7 +698,7 @@
       '<section class="data-panel rise"><div class="data-step"><span>STEP 1</span><strong>登録データを用意</strong></div><p class="card-note">写真からAIに単語データを作ってもらう場合は、下の形式のJSONにしてから貼り付けます。numberは教材と同じ通し番号（Chapter 1=1〜100、Chapter 2=101〜200、Chapter 3=201〜300、Chapter 4=301〜400）を使います。</p><details class="data-format"><summary>JSON形式を見る</summary><pre>' + escapeHtml(jsonExample) + '</pre></details></section>' +
       '<section class="data-panel rise"><div class="data-step"><span>STEP 2</span><strong>JSONを貼り付ける</strong></div><textarea id="word-json-input" class="data-textarea" placeholder="ここにJSONを貼り付けてください">' + escapeHtml(state.importText) + '</textarea><div class="data-actions"><button class="secondary-button" data-action="preview-import">プレビュー</button><label class="secondary-button file-button">JSONファイルを選択<input id="word-json-file" type="file" accept="application/json,.json" hidden></label></div></section>' +
       (state.importMessage ? '<div class="data-message">' + escapeHtml(state.importMessage).replace(/\n/g, "<br>") + '</div>' : '') +
-      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。重複は登録されません。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + (word._duplicate ? ' · 重複' : '') + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + (draft.filter(function (x) { return !x._duplicate; }).length) + '語を登録する</button></section>' : '') +
+      (draft ? '<section class="data-panel rise"><div class="data-step"><span>STEP 3</span><strong>内容を確認</strong></div><p class="card-note">' + draft.length + '件を読み込みました。既存の「教材＋番号」は更新、新しい番号は追加します。</p><div class="import-preview">' + draft.slice(0, 10).map(function (word) { var status = word._duplicate ? '重複（JSON内）' : (word._replace ? '更新' : '新規追加'); return '<div class="import-row ' + (word._duplicate ? 'duplicate' : '') + '"><strong>' + String(Number(word.number)).padStart(3, '0') + ' · ' + escapeHtml(word.word) + '</strong><span>' + escapeHtml(word.meaning) + '</span><small>' + escapeHtml(word.book) + ' · Chapter ' + word.chapter + ' · ' + status + '</small></div>'; }).join('') + (draft.length > 10 ? '<p class="card-note">…残り ' + (draft.length - 10) + '件</p>' : '') + '</div><button class="primary-button" data-action="confirm-import">' + draft.filter(function (x) { return !x._duplicate; }).length + '語を反映する</button></section>' : '') +
       '<section class="data-panel rise"><div class="data-step"><span>現在の状態</span><strong>追加した単語</strong></div><p class="card-note">この端末のPWA内に保存されます。初期サンプル20語は削除済みで、現在の学習対象には含まれません。</p><div class="data-stat"><strong>' + customCount + '</strong><span>語</span></div></section>';
   }
 
@@ -753,18 +759,41 @@
       }
       render();
     } else if (action === "confirm-import") {
-      const additions = (state.importDraft || []).filter(function (row) { return !row._duplicate; }).map(function (row) {
-        const copy = Object.assign({}, row);
-        delete copy._duplicate;
-        return copy;
-      });
-      if (!additions.length) {
-        state.importMessage = "新しく登録できる単語がありません。";
+      const draft = (state.importDraft || []).filter(function (row) { return !row._duplicate; });
+      if (!draft.length) {
+        state.importMessage = "反映できる単語がありません。JSON内の番号重複を確認してください。";
       } else {
-        state.customWords = state.customWords.concat(additions);
+        const updates = draft.filter(function (row) { return row._replace; });
+        const additions = draft.filter(function (row) { return !row._replace; });
+        const current = Array.isArray(state.customWords) ? state.customWords.slice() : [];
+
+        // 既存データはIDを維持したまま内容だけ更新します。
+        updates.forEach(function (row) {
+          const index = current.findIndex(function (item) {
+            return Number(item.id) === Number(row._existingId);
+          });
+          if (index < 0) return;
+          const updated = Object.assign({}, current[index], row);
+          delete updated._duplicate;
+          delete updated._duplicateInput;
+          delete updated._replace;
+          delete updated._existingId;
+          current[index] = updated;
+        });
+
+        additions.forEach(function (row) {
+          const copy = Object.assign({}, row);
+          delete copy._duplicate;
+          delete copy._duplicateInput;
+          delete copy._replace;
+          delete copy._existingId;
+          current.push(copy);
+        });
+
+        state.customWords = current;
         save(KEYS.customWords, state.customWords);
         state.importDraft = null;
-        state.importMessage = additions.length + "語を登録しました。";
+        state.importMessage = updates.length + "語を更新、" + additions.length + "語を新規追加しました。";
         state.quiz = null;
       }
       render();
